@@ -36,7 +36,7 @@ export default function LoginPage() {
   }
 
   return (
-    <AuthPageLayout title="Welcome Back" subtitle="Sign in to your account">
+    <AuthPageLayout title="Welcome Back excel courier tracking" subtitle="Sign in to your account">
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Error Alert */}
         {(error || authError) && (
@@ -96,22 +96,6 @@ export default function LoginPage() {
           Sign up
         </Link>
       </div>
-
-      {/* Demo Credentials */}
-      <Card className="bg-secondary/10 border-secondary/20">
-        <CardContent className="pt-4 text-sm space-y-1">
-          <p className="font-medium text-foreground">Demo Credentials</p>
-          <p className="text-muted-foreground">
-            Admin: <code className="bg-muted px-1 rounded text-xs">admin@demo.com</code>
-          </p>
-          <p className="text-muted-foreground">
-            Agent: <code className="bg-muted px-1 rounded text-xs">agent@demo.com</code>
-          </p>
-          <p className="text-muted-foreground">
-            Customer: <code className="bg-muted px-1 rounded text-xs">customer@demo.com</code>
-          </p>
-        </CardContent>
-      </Card>
     </AuthPageLayout>
   )
 }

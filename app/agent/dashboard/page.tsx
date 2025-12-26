@@ -5,126 +5,261 @@ import { ParcelCard } from "@/components/agent/parcel-card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Search, Maximize2 } from "lucide-react"
+import { 
+  Search, 
+  LogOut, 
+  X, 
+  Package, 
+  CheckCircle2, 
+  AlertCircle,
+  LayoutDashboard
+} from "lucide-react"
 import { useAgentParcels } from "@/lib/hooks/use-agent-parcels"
 import type { ParcelSummary } from "@/lib/api-client"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useRouter } from "next/navigation"
+import { useAuth } from "@/lib/auth-context"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+import { Card, CardContent } from "@/components/ui/card"
 
-const ACTIVE_STATUSES = ["BOOKED", "ASSIGNED", "PICKED_UP", "IN_TRANSIT"]
+// Grouping Statuses
+const ACTIVE_STATUSES: ParcelSummary["status"][] = ["BOOKED", "ASSIGNED", "PICKED_UP", "IN_TRANSIT"]
+const COMPLETED_STATUSES: ParcelSummary["status"][] = ["DELIVERED"]
+const REVIEW_STATUSES: ParcelSummary["status"][] = ["FAILED", "CANCELLED"]
 
 export default function AgentDashboard() {
+  const router = useRouter()
+  const { logout } = useAuth()
+
   const [searchQuery, setSearchQuery] = useState("")
+  const [loggingOut, setLoggingOut] = useState(false)
+  const [logoutOpen, setLogoutOpen] = useState(false)
+
   const { parcels, loading } = useAgentParcels({ limit: 50 })
 
-  const { activeParcels, completedParcels } = useMemo(() => {
-    const predicate = (parcel: ParcelSummary) =>
-      ACTIVE_STATUSES.includes(parcel.status) ? "activeParcels" : "completedParcels"
+  // Categorize parcels into three groups
+  const categorized = useMemo(() => {
     return parcels.reduce(
       (acc, parcel) => {
-        acc[predicate(parcel)].push(parcel)
+        if (ACTIVE_STATUSES.includes(parcel.status)) acc.active.push(parcel)
+        else if (COMPLETED_STATUSES.includes(parcel.status)) acc.completed.push(parcel)
+        else if (REVIEW_STATUSES.includes(parcel.status)) acc.review.push(parcel)
         return acc
       },
-      { activeParcels: [] as ParcelSummary[], completedParcels: [] as ParcelSummary[] }
+      { active: [] as ParcelSummary[], completed: [] as ParcelSummary[], review: [] as ParcelSummary[] }
     )
   }, [parcels])
 
-  const filteredActive = useMemo(() => filterParcels(activeParcels, searchQuery), [activeParcels, searchQuery])
-  const filteredCompleted = useMemo(
-    () => filterParcels(completedParcels, searchQuery),
-    [completedParcels, searchQuery]
-  )
+  const filteredActive = useMemo(() => filterParcels(categorized.active, searchQuery), [categorized.active, searchQuery])
+  const filteredCompleted = useMemo(() => filterParcels(categorized.completed, searchQuery), [categorized.completed, searchQuery])
+  const filteredReview = useMemo(() => filterParcels(categorized.review, searchQuery), [categorized.review, searchQuery])
+
+  const handleConfirmLogout = async () => {
+    if (loggingOut) return
+    try {
+      setLoggingOut(true)
+      await logout()
+      setLogoutOpen(false)
+      router.replace("/login")
+    } finally {
+      setLoggingOut(false)
+    }
+  }
 
   return (
-    <div className="space-y-4">
-      {/* Mobile Header */}
-      <div className="sticky top-0 z-20 space-y-4 border-b border-border bg-background/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-background/75">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs uppercase text-muted-foreground">Agent Console</p>
-            <h1 className="text-2xl font-bold text-foreground">My Parcels</h1>
-            <p className="text-sm text-muted-foreground">{activeParcels.length} active assignments</p>
-          </div>
-          <Button size="sm" variant="outline">
-            <Maximize2 className="h-4 w-4" />
+    <div className="min-h-screen bg-slate-50/50 dark:bg-background">
+      {/* Sticky Header */}
+      <div className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/75">
+  <div className="mx-auto max-w-7xl px-4 py-4">
+    <div className="flex items-center justify-between gap-4">
+      {/* Brand/Logo Section */}
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-sm">
+          <LayoutDashboard className="h-5 w-5" />
+        </div>
+        <div>
+          <h1 className="text-lg font-bold tracking-tight leading-none">Agent Console</h1>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1 font-medium hidden sm:block">
+            Real-time Logistics
+          </p>
+        </div>
+      </div>
+
+      {/* Logout Button Section */}
+      <AlertDialog open={logoutOpen} onOpenChange={setLogoutOpen}>
+        <AlertDialogTrigger asChild>
+          <Button 
+            variant="ghost" 
+            className="group h-10 gap-2 rounded-xl px-2 sm:px-4 text-muted-foreground hover:text-destructive hover:bg-destructive/5 transition-all cursor-pointer"
+          >
+            <LogOut className="h-5 w-5 transition-transform group-hover:-translate-x-1" />
+            <span className="hidden sm:inline font-semibold">Logout</span>
           </Button>
+        </AlertDialogTrigger>
+        
+        <AlertDialogContent className="rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Sign out?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You will need to log back in to manage your active parcels.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel className="rounded-xl" disabled={loggingOut}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleConfirmLogout} 
+              disabled={loggingOut} 
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded-xl"
+            >
+              {loggingOut ? "Signing out..." : "Sign Out"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  </div>
+</div>
+
+      <main className="mx-auto max-w-7xl px-4 py-6 space-y-6">
+        {/* Stats Overview Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <StatCard 
+            title="Active Jobs" 
+            count={categorized.active.length} 
+            icon={<Package className="h-5 w-5" />} 
+            color="text-blue-600 bg-blue-50 dark:bg-blue-950/30" 
+          />
+          <StatCard 
+            title="Completed" 
+            count={categorized.completed.length} 
+            icon={<CheckCircle2 className="h-5 w-5" />} 
+            color="text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30" 
+          />
+          <StatCard 
+            title="Needs Review" 
+            count={categorized.review.length} 
+            icon={<AlertCircle className="h-5 w-5" />} 
+            color="text-amber-600 bg-amber-50 dark:bg-amber-950/30" 
+          />
         </div>
 
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        {/* Search Bar */}
+        <div className="relative group">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
           <Input
             placeholder="Search tracking ID or city..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
+            className="pl-10 h-12 rounded-2xl border-none shadow-sm ring-1 ring-border focus-visible:ring-2 focus-visible:ring-primary transition-all bg-background"
           />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-muted rounded-full">
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
-      </div>
 
-      {/* Tabs */}
-      <div className="px-4 pb-10">
+        {/* Tabs Content */}
         <Tabs defaultValue="active" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 bg-muted/60">
-            <TabsTrigger value="active">
-              Active
-              <span className="ml-2 rounded-full bg-primary px-2 text-xs text-primary-foreground">
-                {activeParcels.length}
-              </span>
+          <TabsList className="grid w-full grid-cols-3 h-12 items-stretch p-1 bg-muted/50 rounded-2xl">
+            <TabsTrigger value="active" className="rounded-xl data-[state=active]:shadow-sm">
+              Active ({categorized.active.length})
             </TabsTrigger>
-            <TabsTrigger value="completed">
+            <TabsTrigger value="completed" className="rounded-xl data-[state=active]:shadow-sm">
               Completed
-              <span className="ml-2 rounded-full bg-muted-foreground px-2 text-xs text-background">
-                {completedParcels.length}
-              </span>
+            </TabsTrigger>
+            <TabsTrigger value="review" className="rounded-xl data-[state=active]:shadow-sm">
+              Review
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="active" className="mt-4 space-y-3">
-            {loading && <LoadingList />}
-            {!loading && filteredActive.length === 0 && (
-              <EmptyState title="Nothing to deliver" description="No assignments match your filters right now." />
-            )}
-            {!loading && filteredActive.map((parcel) => <ParcelCard key={parcel._id} parcel={parcel} />)}
-          </TabsContent>
+          <div className="mt-6">
+            <TabsContent value="active" className="space-y-4 outline-none">
+              {loading ? <LoadingList /> : filteredActive.length > 0 ? (
+                filteredActive.map((p) => <ParcelCard key={p._id} parcel={p} />)
+              ) : <EmptyState icon={<Package />} title="All caught up" description="No active deliveries found." />}
+            </TabsContent>
 
-          <TabsContent value="completed" className="mt-4 space-y-3">
-            {loading && <LoadingList />}
-            {!loading && filteredCompleted.length === 0 && (
-              <EmptyState title="No completed jobs" description="Deliveries you finish will land here." />
-            )}
-            {!loading && filteredCompleted.map((parcel) => <ParcelCard key={parcel._id} parcel={parcel} />)}
-          </TabsContent>
+            <TabsContent value="completed" className="space-y-4 outline-none">
+              {loading ? <LoadingList /> : filteredCompleted.length > 0 ? (
+                filteredCompleted.map((p) => <ParcelCard key={p._id} parcel={p} />)
+              ) : <EmptyState icon={<CheckCircle2 />} title="No completions yet" description="Deliveries you finish will appear here." />}
+            </TabsContent>
+
+            <TabsContent value="review" className="space-y-4 outline-none">
+              {loading ? <LoadingList /> : filteredReview.length > 0 ? (
+                filteredReview.map((p) => <ParcelCard key={p._id} parcel={p} />)
+              ) : <EmptyState icon={<AlertCircle />} title="Clear records" description="No failed or cancelled parcels to review." />}
+            </TabsContent>
+          </div>
         </Tabs>
-      </div>
+      </main>
     </div>
+  )
+}
+
+/**
+ * Sub-components
+ */
+
+function StatCard({ title, count, icon, color }: { title: string; count: number; icon: React.ReactNode; color: string }) {
+  return (
+    <Card className="border-none shadow-sm overflow-hidden">
+      <CardContent className="p-5">
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-muted-foreground">{title}</p>
+            <p className="text-3xl font-bold">{count}</p>
+          </div>
+          <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${color}`}>
+            {icon}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
 function filterParcels(parcels: ParcelSummary[], search: string) {
   if (!search) return parcels
-  const query = search.toLowerCase()
-  return parcels.filter((parcel) => {
-    const tracking = parcel.trackingCode.toLowerCase().includes(query)
-    const destination = parcel.deliveryAddressId?.city?.toLowerCase().includes(query)
-    return tracking || destination
-  })
+  const query = search.toLowerCase().trim()
+  return parcels.filter((p) => 
+    p.trackingCode?.toLowerCase().includes(query) || 
+    p.deliveryAddressId?.city?.toLowerCase().includes(query)
+  )
 }
 
 function LoadingList() {
   return (
-    <div className="space-y-3">
-      {Array.from({ length: 3 }).map((_, index) => (
-        <Skeleton key={index} className="h-32 w-full rounded-2xl" />
+    <div className="space-y-4">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div key={i} className="p-4 bg-background rounded-2xl border border-border">
+          <div className="flex justify-between mb-4"><Skeleton className="h-5 w-1/3" /><Skeleton className="h-6 w-20 rounded-full" /></div>
+          <Skeleton className="h-4 w-full mb-2" /><Skeleton className="h-4 w-2/3" />
+        </div>
       ))}
     </div>
   )
 }
 
-function EmptyState({ title, description }: { title: string; description: string }) {
+function EmptyState({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
   return (
-    <div className="rounded-2xl border border-dashed border-border/80 p-6 text-center">
-      <p className="text-lg font-semibold text-foreground">{title}</p>
-      <p className="text-sm text-muted-foreground">{description}</p>
+    <div className="flex flex-col items-center justify-center py-12 px-4 rounded-3xl border-2 border-dashed border-muted bg-muted/5">
+      <div className="mb-4 text-muted-foreground/40">{icon && <div className="h-12 w-12">{icon}</div>}</div>
+      <h3 className="text-lg font-semibold">{title}</h3>
+      <p className="text-sm text-muted-foreground text-center max-w-[250px] mt-1">{description}</p>
     </div>
   )
 }

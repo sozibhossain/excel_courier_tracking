@@ -4,6 +4,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { ParcelSummary, ParcelStatus } from "@/lib/api-client"
+import { AssignAgentDialog } from "./AssignAgentDialog"
+import { Button } from "../ui/button"
+import { Eye, Trash2 } from "lucide-react"
 
 const statusStyles: Record<
   ParcelStatus,
@@ -32,15 +35,19 @@ export function ParcelsTable({
   parcels,
   loading,
   emptyLabel = "No parcels found",
+  token,
+  onParcelUpdated,
 }: {
   parcels: ParcelSummary[]
   loading?: boolean
   emptyLabel?: string
+  token?: string // ✅ optional now
+  onParcelUpdated?: (updated: ParcelSummary) => void
 }) {
   const showEmptyState = !loading && parcels.length === 0
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border/80 shadow-sm">
+    <div className="overflow-hidden">
       <Table>
         <TableHeader className="bg-muted/30">
           <TableRow>
@@ -49,9 +56,12 @@ export function ParcelsTable({
             <TableHead>Route</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Agent</TableHead>
+            <TableHead>Assign agent</TableHead>
             <TableHead>Date</TableHead>
+            <TableHead className="text-right">Action</TableHead>
           </TableRow>
         </TableHeader>
+
         <TableBody>
           {loading &&
             Array.from({ length: 5 }).map((_, index) => (
@@ -72,14 +82,23 @@ export function ParcelsTable({
                   <Skeleton className="h-4 w-24" />
                 </TableCell>
                 <TableCell>
+                  <Skeleton className="h-8 w-24" />
+                </TableCell>
+                <TableCell>
                   <Skeleton className="h-4 w-20" />
+                </TableCell>
+                <TableCell className="text-right">
+                  <div className="inline-flex gap-2">
+                    <Skeleton className="h-8 w-8" />
+                    <Skeleton className="h-8 w-8" />
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
 
           {showEmptyState && (
             <TableRow>
-              <TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
+              <TableCell colSpan={8} className="py-10 text-center text-sm text-muted-foreground">
                 {emptyLabel}
               </TableCell>
             </TableRow>
@@ -88,29 +107,48 @@ export function ParcelsTable({
           {!loading &&
             parcels.map((parcel) => {
               const statusConfig = statusStyles[parcel.status]
-              const origin = parcel.pickupAddressId?.city ?? parcel.pickupAddressId?.label
-              const destination = parcel.deliveryAddressId?.city ?? parcel.deliveryAddressId?.label
+              const origin = parcel.pickupAddressId?.city ?? parcel.pickupAddressId?.label ?? "Unassigned"
+              const destination = parcel.deliveryAddressId?.city ?? parcel.deliveryAddressId?.label ?? "Unassigned"
+
               return (
                 <TableRow key={parcel._id} className="hover:bg-muted/40">
                   <TableCell className="font-mono text-xs sm:text-sm text-foreground">{parcel.trackingCode}</TableCell>
+
                   <TableCell className="text-sm">
                     <div className="font-medium">{parcel.customerId?.name ?? "—"}</div>
-                    <p className="text-xs text-muted-foreground">{parcel.customerId?.email}</p>
+                    <p className="text-xs text-muted-foreground">{parcel.customerId?.email ?? ""}</p>
                   </TableCell>
+
                   <TableCell className="text-xs text-muted-foreground">
-                    {origin ?? "Unassigned"} - {destination ?? "Unassigned"}
+                    {origin} - {destination}
                   </TableCell>
+
                   <TableCell>
-                    <Badge className={`${statusConfig.className} border-none`}>
-                      {statusConfig.label}
-                    </Badge>
+                    <Badge className={`${statusConfig.className} border-none`}>{statusConfig.label}</Badge>
                   </TableCell>
+
                   <TableCell className="text-sm">
-                    {parcel.assignedAgentId?.name ?? (
-                      <span className="text-muted-foreground">Unassigned</span>
+                    {parcel.assignedAgentId?.name ?? <span className="text-muted-foreground">Unassigned</span>}
+                  </TableCell>
+
+                  <TableCell className="text-sm">
+                    {token ? (
+                      <AssignAgentDialog token={token} parcel={parcel} onAssigned={(u) => onParcelUpdated?.(u)} />
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
                     )}
                   </TableCell>
+
                   <TableCell className="text-xs text-muted-foreground">{formatDate(parcel.createdAt)}</TableCell>
+
+                  <TableCell className="text-right">
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </TableCell>
                 </TableRow>
               )
             })}

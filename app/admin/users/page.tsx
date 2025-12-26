@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { MoreHorizontal, Search } from "lucide-react"
+import { Eye, Search, Trash2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useAdminUsers } from "@/lib/hooks/use-admin-users"
@@ -18,6 +18,8 @@ const ROLE_FILTERS: Array<{ label: string; value: User["role"] | "ALL" }> = [
   { label: "Agents", value: "AGENT" },
   { label: "Customers", value: "CUSTOMER" },
 ]
+
+const ROLE_OPTIONS: User["role"][] = ["ADMIN", "AGENT", "CUSTOMER"]
 
 export default function AdminUsers() {
   const [search, setSearch] = useState("")
@@ -41,6 +43,11 @@ export default function AdminUsers() {
       return nameMatch || emailMatch
     })
   }, [users, search])
+
+  const handleRoleChange = async (userId: string, role: User["role"]) => {
+    // TODO: call API to update role
+    console.log("update role:", userId, role)
+  }
 
   return (
     <div className="space-y-6">
@@ -66,6 +73,7 @@ export default function AdminUsers() {
             onChange={(event) => setSearch(event.target.value)}
           />
         </div>
+
         <Select value={roleFilter} onValueChange={(value) => setRoleFilter(value as User["role"] | "ALL")}>
           <SelectTrigger className="w-full lg:w-48">
             <SelectValue placeholder="Filter role" />
@@ -83,17 +91,19 @@ export default function AdminUsers() {
       {/* Users Table */}
       <Card className="border-border/80 shadow-sm">
         <CardContent className="pt-6">
-          <div className="overflow-hidden rounded-xl border border-border/70">
+          <div className="overflow-hidden">
             <Table>
               <TableHeader className="bg-muted/30">
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
+                  <TableHead>Update role</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
+
               <TableBody>
                 {loading &&
                   Array.from({ length: 5 }).map((_, index) => (
@@ -108,7 +118,10 @@ export default function AdminUsers() {
                         <Skeleton className="h-5 w-20 rounded-full" />
                       </TableCell>
                       <TableCell>
-                        <Skeleton className="h-5 w-16 rounded-full" />
+                        <Skeleton className="h-9 w-40 rounded-md" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-5 w-20 rounded-full" />
                       </TableCell>
                       <TableCell className="text-right">
                         <Skeleton className="ml-auto h-8 w-8 rounded-full" />
@@ -118,7 +131,7 @@ export default function AdminUsers() {
 
                 {!loading && filteredUsers.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
                       No users match your filters.
                     </TableCell>
                   </TableRow>
@@ -131,12 +144,33 @@ export default function AdminUsers() {
                         <div>{user.name}</div>
                         <p className="text-xs text-muted-foreground">Joined recently</p>
                       </TableCell>
+
                       <TableCell className="text-sm text-muted-foreground">{user.email}</TableCell>
+
                       <TableCell>
                         <Badge variant="outline" className="font-mono text-xs">
                           {user.role}
                         </Badge>
                       </TableCell>
+
+                      <TableCell>
+                        <Select
+                          value={user.role}
+                          onValueChange={(value) => handleRoleChange(user._id, value as User["role"])}
+                        >
+                          <SelectTrigger className="h-9 w-40">
+                            <SelectValue placeholder="Select role" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {ROLE_OPTIONS.map((role) => (
+                              <SelectItem key={role} value={role}>
+                                {role}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+
                       <TableCell>
                         <Badge
                           className={`${
@@ -146,9 +180,13 @@ export default function AdminUsers() {
                           {user.isActive ? "Active" : "Inactive"}
                         </Badge>
                       </TableCell>
+
                       <TableCell className="text-right">
                         <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <MoreHorizontal className="h-4 w-4" />
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </TableCell>
                     </TableRow>

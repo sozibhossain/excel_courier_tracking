@@ -14,9 +14,9 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useToast } from "@/components/ui/use-toast"
 import { useAuth } from "@/lib/auth-context"
 import { createParcelBooking, type ParcelSummary } from "@/lib/api-client"
+import { useToast } from "../ui/use-toast"
 
 const PARCEL_TYPES = ["Documents", "Electronics", "Apparel", "Fragile", "Other"]
 const PARCEL_SIZES = ["Small", "Medium", "Large", "Oversized"]

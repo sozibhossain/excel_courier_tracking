@@ -48,7 +48,7 @@ export default function CustomerDashboard() {
       <div className="border-b border-border bg-white">
         <div className="mx-auto max-w-4xl p-6">
           <p className="text-sm uppercase tracking-wide text-muted-foreground">Customer Portal</p>
-          <h1 className="text-3xl font-bold text-foreground">Welcome back, {user?.name ?? "there"}</h1>
+          <h1 className="text-3xl font-bold text-foreground">Welcome Back excel courier tracking {user?.name ?? "there"}</h1>
           <p className="text-muted-foreground">Track packages, schedule pickups, and keep recipients updated.</p>
         </div>
       </div>
@@ -113,22 +113,6 @@ export default function CustomerDashboard() {
               ))}
           </div>
         </div>
-
-        {/* Help Section */}
-        <Card className="border-primary/20 bg-white">
-          <CardHeader>
-            <CardTitle className="text-lg">Need Help?</CardTitle>
-            <CardDescription>We are one message away for delivery changes or support.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2 sm:flex-row">
-            <Button variant="outline" className="flex-1 bg-background">
-              Contact Support
-            </Button>
-            <Button variant="outline" className="flex-1 bg-background">
-              FAQ
-            </Button>
-          </CardContent>
-        </Card>
       </div>
     </div>
   )

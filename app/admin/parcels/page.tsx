@@ -8,7 +8,7 @@ import { Plus, Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useAdminParcels } from "@/lib/hooks/use-admin-parcels"
-import type { ParcelStatus } from "@/lib/api-client"
+import type { ParcelStatus, ParcelSummary } from "@/lib/api-client"
 
 const STATUS_FILTERS: Array<{ label: string; value: ParcelStatus | "ALL" }> = [
   { label: "All statuses", value: "ALL" },
@@ -21,9 +21,23 @@ const STATUS_FILTERS: Array<{ label: string; value: ParcelStatus | "ALL" }> = [
 ]
 
 export default function AdminParcels() {
+  const [token, setToken] = useState("") // ✅ get admin token
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<ParcelStatus | "ALL">("ALL")
+
   const { parcels, loading, setQuery } = useAdminParcels({ limit: 25 })
+
+  // ✅ local list so we can update a single row after assigning agent
+  const [localParcels, setLocalParcels] = useState<ParcelSummary[]>([])
+
+  useEffect(() => {
+    // change this if you store token differently
+    setToken(localStorage.getItem("accessToken") ?? "")
+  }, [])
+
+  useEffect(() => {
+    setLocalParcels(parcels)
+  }, [parcels])
 
   useEffect(() => {
     setQuery((prev) => ({
@@ -34,15 +48,16 @@ export default function AdminParcels() {
   }, [statusFilter, setQuery])
 
   const filteredParcels = useMemo(() => {
-    if (!search) return parcels
+    if (!search) return localParcels
     const query = search.toLowerCase()
-    return parcels.filter((parcel) => {
-      const trackingMatch = parcel.trackingCode.toLowerCase().includes(query)
+
+    return localParcels.filter((parcel) => {
+      const trackingMatch = parcel.trackingCode?.toLowerCase().includes(query)
       const customerMatch = parcel.customerId?.name?.toLowerCase().includes(query)
       const destinationMatch = parcel.deliveryAddressId?.city?.toLowerCase().includes(query)
-      return trackingMatch || customerMatch || destinationMatch
+      return Boolean(trackingMatch || customerMatch || destinationMatch)
     })
-  }, [parcels, search])
+  }, [localParcels, search])
 
   return (
     <div className="space-y-6">
@@ -69,6 +84,7 @@ export default function AdminParcels() {
             onChange={(event) => setSearch(event.target.value)}
           />
         </div>
+
         <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as ParcelStatus | "ALL")}>
           <SelectTrigger className="w-full lg:w-56">
             <SelectValue placeholder="Filter status" />
@@ -86,7 +102,14 @@ export default function AdminParcels() {
       {/* Parcels Table */}
       <Card className="border-border/80 shadow-sm">
         <CardContent className="pt-6">
-          <ParcelsTable parcels={filteredParcels} loading={loading} />
+          <ParcelsTable
+            parcels={filteredParcels}
+            loading={loading}
+            token={token}
+            onParcelUpdated={(updated) => {
+              setLocalParcels((prev) => prev.map((p) => (p._id === updated._id ? updated : p)))
+            }}
+          />
         </CardContent>
       </Card>
     </div>

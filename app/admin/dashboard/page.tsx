@@ -10,6 +10,8 @@ export default function AdminDashboard() {
   const { metrics, loading: metricsLoading } = useAdminMetrics()
   const { parcels, loading: parcelsLoading } = useAdminParcels({ limit: 5 })
 
+  
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -29,8 +31,13 @@ export default function AdminDashboard() {
           <CardTitle>Recent Parcels</CardTitle>
           <CardDescription>Latest delivery shipments in the system</CardDescription>
         </CardHeader>
+
         <CardContent>
-          <ParcelsTable parcels={parcels} loading={parcelsLoading} emptyLabel="No recent parcels" />
+          <ParcelsTable
+            parcels={parcels}
+            loading={parcelsLoading}
+            emptyLabel="No parcels found"
+          />
         </CardContent>
       </Card>
     </div>

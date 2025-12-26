@@ -45,7 +45,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <AuthPageLayout title="Create Account" subtitle="Join our delivery platform">
+    <AuthPageLayout title="Create an account in Excel for courier tracking." subtitle="Join our delivery platform">
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Error Alert */}
         {(error || authError) && (

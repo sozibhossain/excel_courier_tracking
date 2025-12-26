@@ -248,6 +248,19 @@ export async function fetchAgentParcels(
   return { data: payload.data ?? [], meta: payload.meta }
 }
 
+export async function assignAgentToParcel(token: string, parcelId: string, agentId: string) {
+  const response = await authenticatedFetch(`/admin/parcels/${parcelId}/assign-agent`, token, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ agentId }),
+  })
+
+  if (!response.ok) throw new Error("Failed to assign agent")
+  const payload: ApiResponse<ParcelSummary> = await response.json()
+  return payload.data
+}
+
+
 export async function fetchCustomerParcels(
   token: string,
   params?: { page?: number; limit?: number; status?: ParcelStatus; dateFrom?: string; dateTo?: string }
