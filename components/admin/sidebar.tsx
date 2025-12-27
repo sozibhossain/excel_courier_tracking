@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Menu,
+  Bell,
 } from "lucide-react"
 
 export function AdminSidebar() {
@@ -26,6 +27,7 @@ export function AdminSidebar() {
     { label: "Parcels", icon: Package, href: "/admin/parcels" },
     { label: "Users", icon: Users, href: "/admin/users" },
     { label: "Reports", icon: FileText, href: "/admin/reports" },
+    { label: "Notifications", icon: Bell, href: "/admin/notifications" },
   ]
 
   const isActive = (href: string) => pathname === href

@@ -2,15 +2,17 @@
 
 import type React from "react"
 import { useEffect } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 
 import { useAuth } from "@/lib/auth-context"
 import { AdminSidebar } from "@/components/admin/sidebar"
 import { Spinner } from "@/components/ui/spinner"
 import { Bell, UserCircle } from "lucide-react"
+import { useNotifications } from "@/lib/notifications-context"
 
 function AdminHeader() {
-  const notificationCount = 5
+  const { unreadCount } = useNotifications()
 
   return (
     <header className="fixed top-0 inset-x-0 z-50 h-16 border-b bg-background">
@@ -18,18 +20,18 @@ function AdminHeader() {
         <div className="font-semibold">Admin Panel</div>
 
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            className="relative inline-flex h-9 w-9 items-center justify-center rounded-md border hover:bg-muted"
-            aria-label={`Notifications (${notificationCount})`}
+          <Link
+            href="/admin/notifications"
+            className="relative inline-flex h-9 w-9 items-center justify-center rounded-md border hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={`Notifications (${unreadCount})`}
           >
             <Bell className="h-5 w-5" />
-            {notificationCount > 0 && (
+            {unreadCount > 0 && (
               <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[11px] leading-[18px] text-center">
-                {notificationCount > 99 ? "99+" : notificationCount}
+                {unreadCount > 99 ? "99+" : unreadCount}
               </span>
             )}
-          </button>
+          </Link>
 
           <button
             type="button"

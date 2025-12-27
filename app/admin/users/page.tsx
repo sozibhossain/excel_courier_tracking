@@ -9,8 +9,22 @@ import { Eye, Search, Trash2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useAdminUsers } from "@/lib/hooks/use-admin-users"
-import type { User } from "@/lib/api-client"
+import type { User, UserSummary } from "@/lib/api-client"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { useAuth } from "@/lib/auth-context"
+import { deleteAdminUser, updateAdminUser } from "@/lib/api-client"
+import { useToast } from "@/components/ui/use-toast"
 
 const ROLE_FILTERS: Array<{ label: string; value: User["role"] | "ALL" }> = [
   { label: "All roles", value: "ALL" },
@@ -25,6 +39,13 @@ export default function AdminUsers() {
   const [search, setSearch] = useState("")
   const [roleFilter, setRoleFilter] = useState<User["role"] | "ALL">("ALL")
   const { users, loading, setQuery } = useAdminUsers({ limit: 25 })
+  const [selectedUser, setSelectedUser] = useState<UserSummary | null>(null)
+  const [userToDelete, setUserToDelete] = useState<UserSummary | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [localUsers, setLocalUsers] = useState<UserSummary[]>([])
+  const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
+  const { tokens } = useAuth()
+  const { toast } = useToast()
 
   useEffect(() => {
     setQuery((prev) => ({
@@ -34,19 +55,76 @@ export default function AdminUsers() {
     }))
   }, [roleFilter, setQuery])
 
+  useEffect(() => {
+    setLocalUsers(users)
+  }, [users])
+
+  useEffect(() => {
+    if (!selectedUser) return
+    const match = localUsers.find((user) => user._id === selectedUser._id)
+    if (match && match !== selectedUser) {
+      setSelectedUser(match)
+    }
+  }, [localUsers, selectedUser])
+
+  useEffect(() => {
+    if (!userToDelete) return
+    const match = localUsers.find((user) => user._id === userToDelete._id)
+    if (match && match !== userToDelete) {
+      setUserToDelete(match)
+    }
+  }, [localUsers, userToDelete])
+
   const filteredUsers = useMemo(() => {
-    if (!search) return users
+    if (!search) return localUsers
     const query = search.toLowerCase()
-    return users.filter((user) => {
+    return localUsers.filter((user) => {
       const nameMatch = user.name?.toLowerCase().includes(query)
       const emailMatch = user.email?.toLowerCase().includes(query)
       return nameMatch || emailMatch
     })
-  }, [users, search])
+  }, [localUsers, search])
 
   const handleRoleChange = async (userId: string, role: User["role"]) => {
-    // TODO: call API to update role
-    console.log("update role:", userId, role)
+    if (!tokens?.accessToken) {
+      toast({ title: "Authentication required", description: "Please login again to manage users.", variant: "destructive" })
+      return
+    }
+    try {
+      setUpdatingUserId(userId)
+      const updated = await updateAdminUser(tokens.accessToken, userId, { role })
+      setLocalUsers((prev) =>
+        prev.map((user) => (user._id === userId ? { ...user, role: updated.role, isActive: updated.isActive } : user))
+      )
+      setQuery((prev) => ({ ...prev }))
+      toast({ title: "Role updated", description: `${updated.name || "User"} is now ${updated.role}.` })
+    } catch (error) {
+      console.error(error)
+      toast({ title: "Failed to update role", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" })
+    } finally {
+      setUpdatingUserId(null)
+    }
+  }
+
+  const handleDeleteUser = async () => {
+    if (!userToDelete || !tokens?.accessToken) return
+    try {
+      setDeleting(true)
+      await deleteAdminUser(tokens.accessToken, userToDelete._id)
+      setLocalUsers((prev) => prev.filter((user) => user._id !== userToDelete._id))
+      setQuery((prev) => ({ ...prev }))
+      toast({ title: "User removed", description: `${userToDelete.name ?? "Account"} has been deleted.` })
+    } catch (error) {
+      console.error(error)
+      toast({
+        title: "Failed to delete user",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setDeleting(false)
+      setUserToDelete(null)
+    }
   }
 
   return (
@@ -156,6 +234,7 @@ export default function AdminUsers() {
                       <TableCell>
                         <Select
                           value={user.role}
+                          disabled={updatingUserId === user._id || !tokens?.accessToken}
                           onValueChange={(value) => handleRoleChange(user._id, value as User["role"])}
                         >
                           <SelectTrigger className="h-9 w-40">
@@ -182,10 +261,16 @@ export default function AdminUsers() {
                       </TableCell>
 
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSelectedUser(user)}>
                           <Eye className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          disabled={!tokens?.accessToken}
+                          onClick={() => setUserToDelete(user)}
+                        >
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </TableCell>
@@ -196,6 +281,69 @@ export default function AdminUsers() {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={Boolean(selectedUser)} onOpenChange={(open) => !open && setSelectedUser(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>User details</DialogTitle>
+          </DialogHeader>
+          {selectedUser && (
+            <div className="space-y-4">
+              <div>
+                <p className="text-xs uppercase text-muted-foreground">Name</p>
+                <p className="font-semibold">{selectedUser.name || "Unknown"}</p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <p className="text-xs uppercase text-muted-foreground">Email</p>
+                  <p className="font-medium break-all">{selectedUser.email}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase text-muted-foreground">Role</p>
+                  <Badge variant="outline" className="font-mono">
+                    {selectedUser.role}
+                  </Badge>
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <p className="text-xs uppercase text-muted-foreground">Status</p>
+                  <span
+                    className={`text-sm font-medium ${
+                      selectedUser.isActive ? "text-emerald-600" : "text-amber-600"
+                    }`}
+                  >
+                    {selectedUser.isActive ? "Active" : "Inactive"}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-xs uppercase text-muted-foreground">User ID</p>
+                  <p className="font-mono text-xs">{selectedUser._id}</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={Boolean(userToDelete)} onOpenChange={(open) => !open && !deleting && setUserToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this user?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {userToDelete
+                ? `This will remove ${userToDelete.name ?? "this user"} from the system. Choose Yes to continue or No to keep the account.`
+                : "This action cannot be undone."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>No</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteUser} disabled={deleting || !tokens?.accessToken}>
+              {deleting ? "Deleting..." : "Yes"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

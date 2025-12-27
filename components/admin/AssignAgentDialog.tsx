@@ -48,10 +48,10 @@ export function AssignAgentDialog({
   const filtered = React.useMemo(() => {
     const query = q.trim().toLowerCase()
     if (!query) return agents
-    return agents.filter((a) => {
+    return agents.filter((agent) => {
       return (
-        a.name?.toLowerCase().includes(query) ||
-        a.email?.toLowerCase().includes(query)
+        agent.name?.toLowerCase().includes(query) ||
+        agent.email?.toLowerCase().includes(query)
       )
     })
   }, [agents, q])

@@ -46,10 +46,11 @@ export interface ApiResponse<T> {
 }
 
 export interface PaginationMeta {
-  page: number
-  limit: number
-  total: number
-  totalPages: number
+  page?: number
+  limit?: number
+  total?: number
+  totalPages?: number
+  unreadCount?: number
 }
 
 export type ParcelStatus =
@@ -138,6 +139,17 @@ export interface DashboardMetrics {
 export interface PaginatedResponse<T> {
   data: T[]
   meta: PaginationMeta | undefined
+}
+
+export interface NotificationItem {
+  _id: string
+  type: string
+  title: string
+  body?: string
+  data?: Record<string, unknown>
+  isRead: boolean
+  readAt?: string
+  createdAt: string
 }
 
 // Auth endpoints
@@ -258,6 +270,71 @@ export async function assignAgentToParcel(token: string, parcelId: string, agent
   if (!response.ok) throw new Error("Failed to assign agent")
   const payload: ApiResponse<ParcelSummary> = await response.json()
   return payload.data
+}
+
+export async function updateAdminUser(
+  token: string,
+  userId: string,
+  payload: { role?: User["role"]; isActive?: boolean }
+) {
+  const response = await authenticatedFetch(`/admin/users/${userId}`, token, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) throw new Error("Failed to update user")
+  const data: ApiResponse<UserSummary> = await response.json()
+  return data.data
+}
+
+export async function deleteAdminUser(token: string, userId: string) {
+  const response = await authenticatedFetch(`/admin/users/${userId}`, token, {
+    method: "DELETE",
+  })
+
+  if (!response.ok) throw new Error("Failed to delete user")
+  const data: ApiResponse<UserSummary> = await response.json()
+  return data.data
+}
+
+export async function deleteAdminParcel(token: string, parcelId: string) {
+  const response = await authenticatedFetch(`/admin/parcels/${parcelId}`, token, {
+    method: "DELETE",
+  })
+
+  if (!response.ok) throw new Error("Failed to delete parcel")
+  const payload: ApiResponse<ParcelSummary> = await response.json()
+  return payload.data
+}
+
+
+export async function fetchNotifications(
+  token: string,
+  params?: { page?: number; limit?: number }
+): Promise<PaginatedResponse<NotificationItem>> {
+  const response = await authenticatedFetch(`/notifications${params ? buildQuery(params) : ""}`, token)
+  if (!response.ok) throw new Error("Failed to fetch notifications")
+  const payload: ApiResponse<NotificationItem[]> = await response.json()
+  return { data: payload.data ?? [], meta: payload.meta }
+}
+
+export async function markNotificationRead(token: string, notificationId: string) {
+  const response = await authenticatedFetch(`/notifications/${notificationId}/mark`, token, {
+    method: "PATCH",
+  })
+  if (!response.ok) throw new Error("Failed to update notification")
+  const payload: ApiResponse<NotificationItem> = await response.json()
+  return { data: payload.data, meta: payload.meta }
+}
+
+export async function markAllNotifications(token: string) {
+  const response = await authenticatedFetch(`/notifications/mark-all`, token, {
+    method: "PATCH",
+  })
+  if (!response.ok) throw new Error("Failed to mark notifications")
+  const payload: ApiResponse<{ success: boolean }> = await response.json()
+  return payload.meta
 }
 
 
