@@ -1,9 +1,10 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import type { ReactNode } from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import { ArrowLeft, QrCode, RefreshCw, Share2 } from "lucide-react"
+import { ArrowLeft, QrCode, RefreshCw, Share2, ExternalLink, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -14,20 +15,36 @@ import { ParcelRouteMap } from "@/components/customer/parcel-route-map"
 import { useParcelTracking } from "@/lib/hooks/use-parcel-tracking"
 import { useParcelRealtime } from "@/lib/hooks/use-parcel-realtime"
 import { API_ORIGIN } from "@/lib/env"
-import type { ParcelStatus, ParcelStatusHistoryEntry, TrackingPoint } from "@/lib/api-client"
+import type { ParcelStatus, ParcelStatusHistoryEntry, TrackingPoint, ParcelSummary } from "@/lib/api-client"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { useAuth } from "@/lib/auth-context"
+import { useToast } from "@/components/ui/use-toast"
 
 export default function TrackingPage() {
   const params = useParams()
   const trackingId = params.trackingId as string
   const { tracking, loading, error, refresh } = useParcelTracking(trackingId)
-  const [statusHistory, setStatusHistory] = useState(tracking?.history ?? [])
-  const [trackingPoints, setTrackingPoints] = useState(tracking?.tracking.history ?? [])
+  const [statusHistory, setStatusHistory] = useState<ParcelStatusHistoryEntry[]>([])
+  const [trackingPoints, setTrackingPoints] = useState<TrackingPoint[]>([])
+
+  const { tokens } = useAuth()
+  const { toast } = useToast()
+
+  // ✅ QR modal state
+  const [qrOpen, setQrOpen] = useState(false)
+  const [qrObjectUrl, setQrObjectUrl] = useState<string | null>(null)
+  const [qrLoading, setQrLoading] = useState(false)
+  const [qrError, setQrError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (tracking) {
-      setStatusHistory(tracking.history ?? [])
-      setTrackingPoints(tracking.tracking.history ?? [])
-    }
+    setStatusHistory(tracking?.history ?? [])
+    setTrackingPoints(tracking?.tracking.history ?? [])
   }, [tracking])
 
   useParcelRealtime({
@@ -46,28 +63,99 @@ export default function TrackingPage() {
       ])
     },
     onTracking: (point) => {
-      if (!point?.lat || !point?.lng) return
+      if (typeof point?.lat !== "number" || typeof point?.lng !== "number") return
       setTrackingPoints((prev) => [point, ...prev].slice(0, 50))
     },
   })
 
-  const timelineEvents = useMemo(() => buildTimeline(statusHistory, tracking?.parcel.status), [
-    statusHistory,
-    tracking?.parcel.status,
-  ])
+  const timelineEvents = useMemo(
+    () => buildTimeline(statusHistory, tracking?.parcel?.status),
+    [statusHistory, tracking?.parcel?.status]
+  )
 
-  const mapPoints = useMemo(() => toChronologicalPoints(trackingPoints), [trackingPoints])
+  const routePoints = useMemo(
+    () => buildRoutePoints(tracking?.parcel, trackingPoints),
+    [tracking?.parcel, trackingPoints]
+  )
 
   const parcel = tracking?.parcel
-  const shareDisabled = typeof window === "undefined"
+  const shareDisabled = typeof navigator === "undefined"
+
   const qrcodeUrl = parcel ? `${API_ORIGIN}/api/v1/parcels/${parcel._id}/qrcode` : "#"
+
+  const ensureToken = () => {
+    if (!tokens?.accessToken) {
+      toast({
+        title: "Authentication required",
+        description: "Please sign in again to continue.",
+        variant: "destructive",
+      })
+      return null
+    }
+    return tokens.accessToken
+  }
+
+  const revokeQrUrl = () => {
+    if (qrObjectUrl) URL.revokeObjectURL(qrObjectUrl)
+    setQrObjectUrl(null)
+  }
+
+  // ✅ fetch QR with token, create blob URL, show in modal
+  const openQrModal = async () => {
+    if (!parcel) return
+    const token = ensureToken()
+    if (!token) return
+
+    setQrOpen(true)
+    setQrError(null)
+    revokeQrUrl()
+    setQrLoading(true)
+
+    try {
+      const res = await fetch(qrcodeUrl, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (!res.ok) {
+        throw new Error(`QR request failed (${res.status})`)
+      }
+
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      setQrObjectUrl(url)
+    } catch (e) {
+      setQrError(e instanceof Error ? e.message : "Unable to load QR code")
+    } finally {
+      setQrLoading(false)
+    }
+  }
+
+  // cleanup on close/unmount
+  useEffect(() => {
+    if (!qrOpen) {
+      revokeQrUrl()
+      setQrError(null)
+      setQrLoading(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qrOpen])
+
+  useEffect(() => {
+    return () => {
+      revokeQrUrl()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <div className="space-y-6">
       <div className="bg-white border-b border-border">
-        <div className="max-w-4xl mx-auto p-6">
+        <div className="max-w-7xl mx-auto p-6">
           <Link href="/customer/dashboard">
-            <Button variant="ghost" className="mb-4 text-primary hover:bg-primary/10">
+            <Button variant="ghost" className="mb-4 text-primary hover:bg-primary/10 hover:text-primary">
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Shipments
             </Button>
@@ -77,13 +165,14 @@ export default function TrackingPage() {
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-4 space-y-6">
+      <div className="max-w-7xl mx-auto px-4 space-y-6 pb-10">
         {loading && <TrackingSkeleton />}
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
+
         {!loading && parcel && (
           <>
             <ShipmentStatus
@@ -97,20 +186,28 @@ export default function TrackingPage() {
                 name: parcel.deliveryAddressId?.label ?? "Recipient",
                 location: parcel.deliveryAddressId?.fullAddress ?? "Not available",
               }}
-              weight={parcel.weight ? `${parcel.weight} kg` : "—"}
+              weight={formatWeight(parcel.weight)}
               estimatedDelivery={formatDate(parcel.deliveredAt || parcel.scheduledPickupAt)}
             />
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <Button className="flex items-center justify-center gap-2" onClick={() => handleShare(trackingId)} disabled={shareDisabled}>
+              <Button
+                className="flex items-center justify-center gap-2"
+                onClick={() => handleShare(trackingId)}
+                disabled={shareDisabled}
+              >
                 <Share2 className="w-4 h-4" />
                 Share Tracking
               </Button>
-              <Button variant="outline" className="flex items-center justify-center gap-2" asChild>
-                <Link href={qrcodeUrl} target="_blank" rel="noreferrer">
-                  <QrCode className="w-4 h-4" />
-                  QR Code
-                </Link>
+
+              {/* ✅ Open modal, fetch QR with token */}
+              <Button
+                variant="outline"
+                className="flex items-center justify-center gap-2"
+                onClick={openQrModal}
+              >
+                <QrCode className="w-4 h-4" />
+                QR Code
               </Button>
             </div>
 
@@ -127,14 +224,16 @@ export default function TrackingPage() {
               </CardHeader>
               <CardContent className="grid gap-4 sm:grid-cols-2">
                 <DetailRow label="Tracking code" value={parcel.trackingCode} />
-                <DetailRow label="Payment type" value={parcel.paymentType ?? "—"} />
-                {parcel.paymentType === "COD" && <DetailRow label="COD amount" value={`৳ ${parcel.codAmount?.toFixed(2) || "0.00"}`} />}
+                <DetailRow label="Payment type" value={formatText(parcel.paymentType)} />
+                {parcel.paymentType === "COD" && (
+                  <DetailRow label="COD amount" value={formatCurrency(parcel.codAmount)} />
+                )}
                 <DetailRow label="Last update" value={formatDate(parcel.updatedAt)} />
                 {parcel.failureReason && <DetailRow label="Failure reason" value={parcel.failureReason} />}
               </CardContent>
             </Card>
 
-            <ParcelRouteMap points={mapPoints} />
+            <ParcelRouteMap points={routePoints} />
 
             <Card>
               <CardContent className="p-6 space-y-6">
@@ -152,15 +251,61 @@ export default function TrackingPage() {
           </>
         )}
       </div>
+
+      {/* ✅ QR CODE MODAL */}
+      <Dialog open={qrOpen} onOpenChange={setQrOpen}>
+        <DialogContent className="sm:max-w-md z-50">
+          <DialogHeader>
+            <DialogTitle>Parcel QR code</DialogTitle>
+            <DialogDescription>Show this QR code to the delivery agent.</DialogDescription>
+          </DialogHeader>
+
+          {qrLoading && (
+            <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading QR...
+            </div>
+          )}
+
+          {!qrLoading && qrError && (
+            <Alert variant="destructive">
+              <AlertDescription>{qrError}</AlertDescription>
+            </Alert>
+          )}
+
+          {!qrLoading && !qrError && qrObjectUrl && (
+            <div className="flex flex-col items-center gap-4">
+              <div className="rounded-lg border bg-white p-4">
+                <img
+                  src={qrObjectUrl}
+                  alt="Parcel QR Code"
+                  className="h-64 w-64 object-contain"
+                />
+              </div>
+
+              <div className="flex w-full justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={openQrModal}
+                  disabled={qrLoading}
+                >
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Reload
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
 
-function DetailRow({ label, value }: { label: string; value?: string }) {
+function DetailRow({ label, value }: { label: string; value?: ReactNode }) {
   return (
     <div className="space-y-1">
       <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="text-sm font-medium text-foreground">{value ?? "—"}</p>
+      <p className="text-sm font-medium text-foreground">{value ?? DASH}</p>
     </div>
   )
 }
@@ -198,6 +343,8 @@ const STATUS_LABELS: Record<ParcelStatus, string> = {
   CANCELLED: "Cancelled",
 }
 
+const DASH = "\u2014"
+
 const mapShipmentStatus = (status?: ParcelStatus) => {
   switch (status) {
     case "PICKED_UP":
@@ -212,16 +359,59 @@ const mapShipmentStatus = (status?: ParcelStatus) => {
 }
 
 const formatDate = (value?: string | Date | null) => {
-  if (!value) return "—"
+  if (!value) return DASH
   const date = value instanceof Date ? value : new Date(value)
-  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString()
+  return Number.isNaN(date.getTime()) ? DASH : date.toLocaleString()
+}
+
+const formatWeight = (value?: number) => (typeof value === "number" ? `${value.toFixed(1)} kg` : DASH)
+
+const formatCurrency = (value?: number) => {
+  if (typeof value !== "number") return DASH
+  return new Intl.NumberFormat("en-BD", {
+    style: "currency",
+    currency: "BDT",
+    currencyDisplay: "code",
+    maximumFractionDigits: 2,
+  }).format(value)
+}
+
+const formatText = (value?: string | null) => (value && value.trim().length ? value : DASH)
+
+const areSameCoords = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) =>
+  Math.abs(a.lat - b.lat) < 1e-6 && Math.abs(a.lng - b.lng) < 1e-6
+
+const toAddressPoint = (address?: ParcelSummary["pickupAddressId"] | null) => {
+  if (typeof address?.lat !== "number" || typeof address?.lng !== "number") return null
+  return { lat: address.lat, lng: address.lng }
+}
+
+const buildRoutePoints = (parcel?: ParcelSummary | null, points: TrackingPoint[] = []) => {
+  const chronological = toChronologicalPoints(points)
+  const route: Array<{ lat: number; lng: number; createdAt?: string }> = []
+  const pickup = toAddressPoint(parcel?.pickupAddressId)
+  const delivery = toAddressPoint(parcel?.deliveryAddressId)
+
+  if (pickup) route.push(pickup)
+
+  chronological.forEach((point) => {
+    const previous = route[route.length - 1]
+    if (!previous || !areSameCoords(previous, point)) {
+      route.push({ lat: point.lat, lng: point.lng, createdAt: point.createdAt })
+    }
+  })
+
+  if (delivery) {
+    const last = route[route.length - 1]
+    if (!last || !areSameCoords(last, delivery)) route.push(delivery)
+  }
+
+  return route
 }
 
 const buildTimeline = (history: ParcelStatusHistoryEntry[], currentStatus?: ParcelStatus): TrackingEvent[] => {
   const currentIndex = currentStatus ? STATUS_ORDER.indexOf(currentStatus) : -1
-  const chronological = [...history].sort(
-    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-  )
+  const chronological = [...history].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
 
   return chronological.map((entry) => {
     const entryIndex = STATUS_ORDER.indexOf(entry.status)

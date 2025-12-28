@@ -81,6 +81,16 @@ export interface UserSummary {
   isActive?: boolean
 }
 
+export interface AgentProfile {
+  _id: string
+  userId: string
+  currentLat?: number
+  currentLng?: number
+  lastLocationAt?: string
+  createdAt?: string
+  updatedAt?: string
+}
+
 export interface ParcelSummary {
   _id: string
   trackingCode: string
@@ -118,6 +128,11 @@ export interface TrackingPoint {
   speed?: number
   heading?: number
   createdAt: string
+}
+
+export interface ScanResult {
+  parcelId: string
+  verified: boolean
 }
 
 export interface ParcelTrackingResponse {
@@ -258,6 +273,58 @@ export async function fetchAgentParcels(
   if (!response.ok) throw new Error("Failed to fetch agent parcels")
   const payload: ApiResponse<ParcelSummary[]> = await response.json()
   return { data: payload.data ?? [], meta: payload.meta }
+}
+
+export async function updateAgentParcelStatus(
+  token: string,
+  parcelId: string,
+  payload: { status: ParcelStatus; note?: string }
+) {
+  const response = await authenticatedFetch(`/agent/parcels/${parcelId}/status`, token, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) throw new Error("Failed to update parcel status")
+  const data: ApiResponse<ParcelSummary> = await response.json()
+  return data.data
+}
+
+export async function recordAgentParcelTracking(
+  token: string,
+  parcelId: string,
+  payload: { lat: number; lng: number; speed?: number; heading?: number }
+) {
+  const response = await authenticatedFetch(`/agent/parcels/${parcelId}/tracking`, token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) throw new Error("Failed to record tracking point")
+  const data: ApiResponse<TrackingPoint> = await response.json()
+  return data.data
+}
+
+export async function updateAgentLiveLocation(token: string, payload: { lat: number; lng: number }) {
+  const response = await authenticatedFetch("/agent/location", token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) throw new Error("Failed to update agent location")
+  const data: ApiResponse<AgentProfile> = await response.json()
+  return data.data
+}
+
+export async function verifyAgentParcelScan(token: string, payload: { parcelId: string; code: string }) {
+  const response = await authenticatedFetch("/agent/scan", token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) throw new Error("Failed to verify parcel scan")
+  const data: ApiResponse<ScanResult> = await response.json()
+  return data.data
 }
 
 export async function assignAgentToParcel(token: string, parcelId: string, agentId: string) {

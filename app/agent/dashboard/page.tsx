@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ParcelCard } from "@/components/agent/parcel-card";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,8 @@ import {
   AlertCircle,
   LayoutDashboard,
   Bell,
+  Truck,
+  PackageCheck,
 } from "lucide-react";
 import { useAgentParcels } from "@/lib/hooks/use-agent-parcels";
 import type { ParcelSummary } from "@/lib/api-client";
@@ -34,262 +36,237 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Card, CardContent } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { updateAgentLiveLocation } from "@/lib/api-client";
 
-// Grouping Statuses
-const ACTIVE_STATUSES: ParcelSummary["status"][] = [
-  "BOOKED",
-  "ASSIGNED",
-  "PICKED_UP",
-  "IN_TRANSIT",
-];
+// Constants
+const ACTIVE_STATUSES: ParcelSummary["status"][] = ["BOOKED", "ASSIGNED", "PICKED_UP", "IN_TRANSIT"];
 const COMPLETED_STATUSES: ParcelSummary["status"][] = ["DELIVERED"];
 const REVIEW_STATUSES: ParcelSummary["status"][] = ["FAILED", "CANCELLED"];
 
+type LocationState = "idle" | "watching" | "denied" | "error" | "unsupported";
+
+const LOCATION_COLORS: Record<LocationState, string> = {
+  idle: "bg-amber-400",
+  watching: "bg-emerald-500",
+  denied: "bg-rose-500",
+  error: "bg-amber-500",
+  unsupported: "bg-slate-400",
+};
+
 export default function AgentDashboard() {
   const router = useRouter();
-  const { logout } = useAuth();
+  const { logout, tokens } = useAuth();
   const { unreadCount } = useNotifications();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutOpen, setLogoutOpen] = useState(false);
 
-  const { parcels, loading } = useAgentParcels({ limit: 50 });
+  const { parcels, loading, error: parcelError, refresh } = useAgentParcels({ limit: 50 });
+  const [locationStatus, setLocationStatus] = useState<LocationState>("idle");
+  const [locationMessage, setLocationMessage] = useState<string>("Waiting for GPS...");
 
-  // Categorize parcels into three groups
-  const categorized = useMemo(() => {
-    return parcels.reduce(
-      (acc, parcel) => {
-        if (ACTIVE_STATUSES.includes(parcel.status)) acc.active.push(parcel);
-        else if (COMPLETED_STATUSES.includes(parcel.status))
-          acc.completed.push(parcel);
-        else if (REVIEW_STATUSES.includes(parcel.status))
-          acc.review.push(parcel);
-        return acc;
+  // GPS Sync Logic (Kept your logic, cleaned up variables)
+  useEffect(() => {
+    const token = tokens?.accessToken;
+    if (!token || typeof window === "undefined" || !("geolocation" in navigator)) return;
+
+    let cancelled = false;
+    let watchId: number | null = null;
+    let lastCoords: { lat: number; lng: number } | null = null;
+
+    const transmit = (lat: number, lng: number) => {
+      lastCoords = { lat, lng };
+      updateAgentLiveLocation(token, { lat, lng })
+        .then(() => {
+          if (!cancelled) {
+            setLocationStatus("watching");
+            setLocationMessage("Live location sharing active");
+          }
+        })
+        .catch(() => setLocationStatus("error"));
+    };
+
+    watchId = navigator.geolocation.watchPosition(
+      (pos) => transmit(pos.coords.latitude, pos.coords.longitude),
+      (err) => {
+        if (cancelled) return;
+        setLocationStatus(err.code === err.PERMISSION_DENIED ? "denied" : "error");
+        setLocationMessage(err.code === err.PERMISSION_DENIED ? "GPS access denied" : "GPS Error");
       },
-      {
-        active: [] as ParcelSummary[],
-        completed: [] as ParcelSummary[],
-        review: [] as ParcelSummary[],
-      }
+      { enableHighAccuracy: true, maximumAge: 10000 }
     );
-  }, [parcels]);
 
-  const filteredActive = useMemo(
-    () => filterParcels(categorized.active, searchQuery),
-    [categorized.active, searchQuery]
-  );
-  const filteredCompleted = useMemo(
-    () => filterParcels(categorized.completed, searchQuery),
-    [categorized.completed, searchQuery]
-  );
-  const filteredReview = useMemo(
-    () => filterParcels(categorized.review, searchQuery),
-    [categorized.review, searchQuery]
-  );
+    return () => {
+      cancelled = true;
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+    };
+  }, [tokens?.accessToken]);
+
+  // Parcel Filtering logic
+  const filteredParcels = useMemo(() => {
+    const query = searchQuery.toLowerCase().trim();
+    const list = parcels || [];
+    if (!query) return list;
+    return list.filter(p => 
+      p.trackingCode?.toLowerCase().includes(query) || 
+      p.deliveryAddressId?.city?.toLowerCase().includes(query)
+    );
+  }, [parcels, searchQuery]);
+
+  // Tab Definitions for easier rendering
+  const TAB_CONFIG = [
+    { id: "active", label: "Active", filter: (p: any) => ACTIVE_STATUSES.includes(p.status) },
+    { id: "picked_up", label: "Picked Up", filter: (p: any) => p.status === "PICKED_UP" },
+    { id: "in_transit", label: "In Transit", filter: (p: any) => p.status === "IN_TRANSIT" },
+    { id: "completed", label: "Completed", filter: (p: any) => COMPLETED_STATUSES.includes(p.status) },
+    { id: "review", label: "Review", filter: (p: any) => REVIEW_STATUSES.includes(p.status) },
+  ];
 
   const handleConfirmLogout = async () => {
-    if (loggingOut) return;
-    try {
-      setLoggingOut(true);
-      await logout();
-      setLogoutOpen(false);
-      router.replace("/login");
-    } finally {
-      setLoggingOut(false);
-    }
+    setLoggingOut(true);
+    await logout();
+    router.replace("/login");
   };
 
   return (
-    <div className="min-h-screen bg-slate-50/50 dark:bg-background">
-      {/* Sticky Header */}
-      <div className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/75">
-        <div className="mx-auto max-w-7xl px-4 py-4">
-          <div className="flex items-center justify-between gap-4">
-            {/* Brand/Logo Section */}
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-sm">
-                <LayoutDashboard className="h-5 w-5" />
-              </div>
-              <div>
-                <h1 className="text-lg font-bold tracking-tight leading-none">
-                  Agent Console
-                </h1>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1 font-medium hidden sm:block">
-                  Real-time Logistics
-                </p>
-              </div>
+    <div className="min-h-screen bg-slate-50/50 dark:bg-background pb-10">
+      {/* Header - Fixed height for better mobile layout */}
+      <header className="sticky top-0 z-40 w-full border-b bg-background/80 backdrop-blur-md">
+        <div className="mx-auto max-w-7xl px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="bg-primary p-2 rounded-lg text-primary-foreground">
+              <LayoutDashboard size={18} />
             </div>
+            <h1 className="font-bold text-base sm:text-lg tracking-tight">Agent Console</h1>
+          </div>
 
-            {/* Actions Section */}
-            <div className="flex items-center gap-2 sm:gap-4">
-              {/* Notification Button */}
-              <Link
-                href="/agent/notifications"
-                className="relative h-10 w-10 rounded-xl border border-transparent hover:border-border hover:bg-muted flex items-center justify-center"
-                aria-label={`Notifications (${unreadCount})`}
-              >
-                <Bell className="h-5 w-5 text-muted-foreground" />
-                {unreadCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-white ring-2 ring-background">
-                    {unreadCount > 99 ? "99+" : unreadCount}
-                  </span>
-                )}
-              </Link>
+          <div className="flex items-center gap-1 sm:gap-2">
+            <Link href="/agent/notifications" className="p-2 relative hover:bg-muted rounded-full">
+              <Bell size={20} className="text-muted-foreground" />
+              {unreadCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 h-4 w-4 bg-destructive text-[10px] text-white flex items-center justify-center rounded-full border-2 border-background">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </Link>
 
-              {/* Logout Button Section */}
-              <AlertDialog open={logoutOpen} onOpenChange={setLogoutOpen}>
-                <AlertDialogTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className="group h-10 gap-2 rounded-xl px-2 sm:px-4 text-muted-foreground hover:text-destructive hover:bg-destructive/5 transition-all"
-                  >
-                    <LogOut className="h-5 w-5 transition-transform group-hover:-translate-x-1" />
-                    <span className="hidden sm:inline font-semibold">
-                      Logout
-                    </span>
-                  </Button>
-                </AlertDialogTrigger>
-
-                <AlertDialogContent className="rounded-2xl">
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Sign out?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      You will need to log back in to manage your active
-                      parcels.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter className="gap-2">
-                    <AlertDialogCancel
-                      className="rounded-xl"
-                      disabled={loggingOut}
-                    >
-                      Cancel
-                    </AlertDialogCancel>
-                    <AlertDialogAction
-                      onClick={handleConfirmLogout}
-                      disabled={loggingOut}
-                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded-xl"
-                    >
-                      {loggingOut ? "Signing out..." : "Sign Out"}
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </div>
+            <AlertDialog open={logoutOpen} onOpenChange={setLogoutOpen}>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive gap-2">
+                  <LogOut size={18} />
+                  <span className="hidden sm:inline">Logout</span>
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent className="w-[90vw] max-w-md rounded-2xl">
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Ready to sign out?</AlertDialogTitle>
+                  <AlertDialogDescription>Active tracking will stop until you sign back in.</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleConfirmLogout} className="bg-destructive text-white rounded-xl">
+                    {loggingOut ? "Signing out..." : "Sign Out"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
-      </div>
+      </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-6 space-y-6">
-        {/* Stats Overview Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <main className="mx-auto max-w-7xl px-4 py-4 space-y-4">
+        {/* Location & Alerts */}
+        {["denied", "error", "unsupported"].includes(locationStatus) && (
+          <Alert variant="destructive" className="rounded-xl border-none shadow-sm">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="text-xs font-medium">{locationMessage}</AlertDescription>
+          </Alert>
+        )}
+
+        {/* Dynamic Stats Grid - 3 columns on all screens but smaller text on mobile */}
+        <div className="grid grid-cols-3 gap-2 sm:gap-4">
           <StatCard
-            title="Active Jobs"
-            count={categorized.active.length}
-            icon={<Package className="h-5 w-5" />}
-            color="text-blue-600 bg-blue-50 dark:bg-blue-950/30"
+            title="Active"
+            count={parcels.filter(p => ACTIVE_STATUSES.includes(p.status)).length}
+            icon={<Package size={16} />}
+            className="bg-blue-50 dark:bg-blue-900/20 text-blue-600"
           />
           <StatCard
-            title="Completed"
-            count={categorized.completed.length}
-            icon={<CheckCircle2 className="h-5 w-5" />}
-            color="text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30"
+            title="On Way"
+            count={parcels.filter(p => p.status === "IN_TRANSIT").length}
+            icon={<Truck size={16} />}
+            className="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600"
           />
           <StatCard
-            title="Needs Review"
-            count={categorized.review.length}
-            icon={<AlertCircle className="h-5 w-5" />}
-            color="text-amber-600 bg-amber-50 dark:bg-amber-950/30"
+            title="Issues"
+            count={parcels.filter(p => REVIEW_STATUSES.includes(p.status)).length}
+            icon={<AlertCircle size={16} />}
+            className="bg-amber-50 dark:bg-amber-900/20 text-amber-600"
           />
         </div>
 
-        {/* Search Bar */}
+        {/* Search Bar - Full width on mobile */}
         <div className="relative group">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
           <Input
             placeholder="Search tracking ID or city..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 h-12 rounded-2xl border-none shadow-sm ring-1 ring-border focus-visible:ring-2 focus-visible:ring-primary transition-all bg-background"
+            className="pl-10 h-11 sm:h-12 rounded-xl border-none shadow-sm ring-1 ring-border focus-visible:ring-primary bg-background"
           />
           {searchQuery && (
-            <button
-              onClick={() => setSearchQuery("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-muted rounded-full"
-            >
-              <X className="h-4 w-4" />
+            <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 p-1">
+              <X size={16} className="text-muted-foreground" />
             </button>
           )}
         </div>
 
-        {/* Tabs Content */}
+        {/* Status Indicator */}
+        <div className="flex items-center gap-2 px-1">
+          <div className={`h-2 w-2 rounded-full animate-pulse ${LOCATION_COLORS[locationStatus]}`} />
+          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            {locationMessage}
+          </span>
+        </div>
+
+        {/* Scrollable Tabs System */}
         <Tabs defaultValue="active" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 h-12 items-stretch p-1 bg-muted/50 rounded-2xl">
-            <TabsTrigger
-              value="active"
-              className="rounded-xl data-[state=active]:shadow-sm"
-            >
-              Active ({categorized.active.length})
-            </TabsTrigger>
-            <TabsTrigger
-              value="completed"
-              className="rounded-xl data-[state=active]:shadow-sm"
-            >
-              Completed
-            </TabsTrigger>
-            <TabsTrigger
-              value="review"
-              className="rounded-xl data-[state=active]:shadow-sm"
-            >
-              Review
-            </TabsTrigger>
-          </TabsList>
+          <div className="relative -mx-4 px-4 overflow-x-auto no-scrollbar">
+            <TabsList className="flex w-max min-w-full gap-1 bg-muted/40 p-1 rounded-xl">
+              {TAB_CONFIG.map((tab) => (
+                <TabsTrigger
+                  key={tab.id}
+                  value={tab.id}
+                  className="rounded-lg px-4 py-2 text-xs font-medium whitespace-nowrap data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                >
+                  {tab.label} ({parcels.filter(tab.filter).length})
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
 
-          <div className="mt-6">
-            <TabsContent value="active" className="space-y-4 outline-none">
-              {loading ? (
-                <LoadingList />
-              ) : filteredActive.length > 0 ? (
-                filteredActive.map((p) => <ParcelCard key={p._id} parcel={p} />)
-              ) : (
-                <EmptyState
-                  icon={<Package />}
-                  title="All caught up"
-                  description="No active deliveries found."
-                />
-              )}
-            </TabsContent>
-
-            <TabsContent value="completed" className="space-y-4 outline-none">
-              {loading ? (
-                <LoadingList />
-              ) : filteredCompleted.length > 0 ? (
-                filteredCompleted.map((p) => (
-                  <ParcelCard key={p._id} parcel={p} />
-                ))
-              ) : (
-                <EmptyState
-                  icon={<CheckCircle2 />}
-                  title="No completions yet"
-                  description="Deliveries you finish will appear here."
-                />
-              )}
-            </TabsContent>
-
-            <TabsContent value="review" className="space-y-4 outline-none">
-              {loading ? (
-                <LoadingList />
-              ) : filteredReview.length > 0 ? (
-                filteredReview.map((p) => <ParcelCard key={p._id} parcel={p} />)
-              ) : (
-                <EmptyState
-                  icon={<AlertCircle />}
-                  title="Clear records"
-                  description="No failed or cancelled parcels to review."
-                />
-              )}
-            </TabsContent>
+          <div className="mt-4">
+            {TAB_CONFIG.map((tab) => (
+              <TabsContent key={tab.id} value={tab.id} className="space-y-3 outline-none">
+                {loading ? (
+                  <LoadingList />
+                ) : filteredParcels.filter(tab.filter).length > 0 ? (
+                  filteredParcels
+                    .filter(tab.filter)
+                    .map((p) => (
+                      <ParcelCard key={p._id} parcel={p} onActionComplete={refresh} />
+                    ))
+                ) : (
+                  <EmptyState
+                    icon={tab.id === 'completed' ? <PackageCheck /> : <Package />}
+                    title={`No ${tab.label} shipments`}
+                    description="Items matching this status will appear here."
+                  />
+                )}
+              </TabsContent>
+            ))}
           </div>
         </Tabs>
       </main>
@@ -298,31 +275,19 @@ export default function AgentDashboard() {
 }
 
 /**
- * Sub-components
+ * Enhanced Components for Responsiveness
  */
 
-function StatCard({
-  title,
-  count,
-  icon,
-  color,
-}: {
-  title: string;
-  count: number;
-  icon: React.ReactNode;
-  color: string;
-}) {
+function StatCard({ title, count, icon, className }: { title: string; count: number; icon: React.ReactNode; className: string }) {
   return (
     <Card className="border-none shadow-sm overflow-hidden">
-      <CardContent className="p-5">
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-muted-foreground">{title}</p>
-            <p className="text-3xl font-bold">{count}</p>
+      <CardContent className="p-3 sm:p-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1">
+          <div>
+            <p className="text-[10px] sm:text-xs font-semibold text-muted-foreground uppercase tracking-wider">{title}</p>
+            <p className="text-xl sm:text-2xl font-bold">{count}</p>
           </div>
-          <div
-            className={`flex h-12 w-12 items-center justify-center rounded-2xl ${color}`}
-          >
+          <div className={`p-2 rounded-lg ${className}`}>
             {icon}
           </div>
         </div>
@@ -331,54 +296,29 @@ function StatCard({
   );
 }
 
-function filterParcels(parcels: ParcelSummary[], search: string) {
-  if (!search) return parcels;
-  const query = search.toLowerCase().trim();
-  return parcels.filter(
-    (p) =>
-      p.trackingCode?.toLowerCase().includes(query) ||
-      p.deliveryAddressId?.city?.toLowerCase().includes(query)
-  );
-}
-
 function LoadingList() {
   return (
-    <div className="space-y-4">
-      {Array.from({ length: 3 }).map((_, i) => (
-        <div
-          key={i}
-          className="p-4 bg-background rounded-2xl border border-border"
-        >
-          <div className="flex justify-between mb-4">
-            <Skeleton className="h-5 w-1/3" />
-            <Skeleton className="h-6 w-20 rounded-full" />
+    <div className="space-y-3">
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="p-4 bg-background rounded-xl border border-border/50 shadow-sm">
+          <div className="flex justify-between mb-3">
+            <Skeleton className="h-4 w-1/3" />
+            <Skeleton className="h-5 w-16 rounded-full" />
           </div>
-          <Skeleton className="h-4 w-full mb-2" />
-          <Skeleton className="h-4 w-2/3" />
+          <Skeleton className="h-3 w-full mb-2" />
+          <Skeleton className="h-3 w-1/2" />
         </div>
       ))}
     </div>
   );
 }
 
-function EmptyState({
-  icon,
-  title,
-  description,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-}) {
+function EmptyState({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
   return (
-    <div className="flex flex-col items-center justify-center py-12 px-4 rounded-3xl border-2 border-dashed border-muted bg-muted/5">
-      <div className="mb-4 text-muted-foreground/40">
-        {icon && <div className="h-12 w-12">{icon}</div>}
-      </div>
-      <h3 className="text-lg font-semibold">{title}</h3>
-      <p className="text-sm text-muted-foreground text-center max-w-[250px] mt-1">
-        {description}
-      </p>
+    <div className="flex flex-col items-center justify-center py-10 px-4 rounded-2xl border border-dashed border-muted bg-muted/5">
+      <div className="mb-3 text-muted-foreground/30 h-10 w-10">{icon}</div>
+      <h3 className="text-sm font-semibold">{title}</h3>
+      <p className="text-[12px] text-muted-foreground text-center mt-1">{description}</p>
     </div>
   );
 }

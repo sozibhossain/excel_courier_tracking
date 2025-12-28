@@ -11,6 +11,7 @@ export function useAgentParcels(initialQuery?: { status?: ParcelStatus; page?: n
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState(initialQuery ?? {})
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     if (!tokens?.accessToken) return
@@ -29,7 +30,9 @@ export function useAgentParcels(initialQuery?: { status?: ParcelStatus; page?: n
     }
 
     fetchParcels()
-  }, [tokens?.accessToken, JSON.stringify(query)])
+  }, [tokens?.accessToken, JSON.stringify(query), refreshKey])
 
-  return { parcels, loading, error, meta, setQuery }
+  const refresh = () => setRefreshKey((key) => key + 1)
+
+  return { parcels, loading, error, meta, setQuery, refresh, setParcels }
 }

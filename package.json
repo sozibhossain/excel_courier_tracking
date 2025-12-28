@@ -36,6 +36,7 @@
     "ioredis": "5.8.2",
     "json2csv": "6.0.0-alpha.2",
     "jsonwebtoken": "9.0.3",
+    "leaflet": "^1.9.4",
     "lucide-react": "0.562.0",
     "mongoose": "9.0.2",
     "morgan": "1.10.1",
@@ -49,6 +50,7 @@
     "react": "18",
     "react-dialog": "^0.1.0",
     "react-dom": "18",
+    "react-leaflet": "^4.2.1",
     "socket.io": "4.8.3",
     "sonner": "^2.0.7",
     "swagger-jsdoc": "6.2.8",
@@ -61,6 +63,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.18",
+    "@types/leaflet": "^1.9.21",
     "@types/node": "25.0.3",
     "@types/react": "18",
     "@types/react-dom": "18",
