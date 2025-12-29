@@ -32,6 +32,7 @@ export default function TrackingPage() {
   const { tracking, loading, error, refresh } = useParcelTracking(trackingId)
   const [statusHistory, setStatusHistory] = useState<ParcelStatusHistoryEntry[]>([])
   const [trackingPoints, setTrackingPoints] = useState<TrackingPoint[]>([])
+  const [liveParcel, setLiveParcel] = useState<ParcelSummary | null>(null)
 
   const { tokens } = useAuth()
   const { toast } = useToast()
@@ -45,11 +46,14 @@ export default function TrackingPage() {
   useEffect(() => {
     setStatusHistory(tracking?.history ?? [])
     setTrackingPoints(tracking?.tracking.history ?? [])
+    setLiveParcel(tracking?.parcel ?? null)
   }, [tracking])
 
+  const parcel = liveParcel ?? tracking?.parcel ?? null
+
   useParcelRealtime({
-    parcelId: tracking?.parcel._id,
-    enabled: !!tracking?.parcel._id,
+    parcelId: parcel?._id,
+    enabled: !!parcel?._id,
     onStatus: (payload) => {
       if (!payload?.status) return
       setStatusHistory((prev) => [
@@ -61,6 +65,25 @@ export default function TrackingPage() {
         },
         ...prev,
       ])
+      setLiveParcel((current) => {
+        const base = current ?? parcel
+        if (!base) return current
+        const matches =
+          (payload.parcelId && base._id === payload.parcelId) ||
+          (!!payload.trackingCode && base.trackingCode === payload.trackingCode)
+        if (!matches) return current
+        const failureReason =
+          payload.status === "FAILED"
+            ? payload.failureReason ?? payload.note ?? base.failureReason
+            : undefined
+        return {
+          ...base,
+          status: payload.status,
+          updatedAt: payload.updatedAt ?? base.updatedAt,
+          deliveredAt: payload.deliveredAt ?? base.deliveredAt,
+          failureReason,
+        }
+      })
     },
     onTracking: (point) => {
       if (typeof point?.lat !== "number" || typeof point?.lng !== "number") return
@@ -69,16 +92,15 @@ export default function TrackingPage() {
   })
 
   const timelineEvents = useMemo(
-    () => buildTimeline(statusHistory, tracking?.parcel?.status),
-    [statusHistory, tracking?.parcel?.status]
+    () => buildTimeline(statusHistory, parcel?.status),
+    [statusHistory, parcel?.status]
   )
 
   const routePoints = useMemo(
-    () => buildRoutePoints(tracking?.parcel, trackingPoints),
-    [tracking?.parcel, trackingPoints]
+    () => buildRoutePoints(parcel, trackingPoints),
+    [parcel, trackingPoints]
   )
 
-  const parcel = tracking?.parcel
   const shareDisabled = typeof navigator === "undefined"
 
   const qrcodeUrl = parcel ? `${API_ORIGIN}/api/v1/parcels/${parcel._id}/qrcode` : "#"
