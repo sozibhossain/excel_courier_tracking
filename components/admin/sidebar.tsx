@@ -1,26 +1,20 @@
 "use client"
 
-import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
+import { useSidebar } from "@/lib/sidebar-context"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import {
-  BarChart3,
-  Package,
-  Users,
-  FileText,
-  LogOut,
-  ChevronLeft,
-  ChevronRight,
-  Menu,
-  Bell,
+  BarChart3, Package, Users, FileText, LogOut,
+  ChevronLeft, ChevronRight, Menu, Bell, X, LayoutDashboard,
 } from "lucide-react"
 
 export function AdminSidebar() {
   const pathname = usePathname()
   const { logout } = useAuth()
-  const [isOpen, setIsOpen] = useState(true)
+  const { isOpen, setIsOpen, isMobile } = useSidebar()
 
   const menuItems = [
     { label: "Dashboard", icon: BarChart3, href: "/admin/dashboard" },
@@ -30,105 +24,85 @@ export function AdminSidebar() {
     { label: "Notifications", icon: Bell, href: "/admin/notifications" },
   ]
 
-  const isActive = (href: string) => pathname === href
-
   return (
     <>
-      {/* Mobile Toggle */}
-      <button
-        type="button"
-        onClick={() => setIsOpen(true)}
-        className="fixed top-4 left-4 z-50 lg:hidden bg-primary text-primary-foreground p-2 rounded-lg"
-        aria-label="Open sidebar"
-      >
-        <Menu className="w-5 h-5" />
-      </button>
+      {/* Mobile Overlay */}
+      {isMobile && isOpen && (
+        <div 
+          className="fixed inset-0 z-40 bg-slate-900/20 backdrop-blur-sm transition-opacity"
+          onClick={() => setIsOpen(false)}
+        />
+      )}
 
-      {/* Mobile overlay */}
-      <div
-        onClick={() => setIsOpen(false)}
-        className={`fixed inset-0 z-40 bg-black/40 lg:hidden transition-opacity ${
-          isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-        }`}
-      />
-
-      {/* Sidebar */}
       <aside
-        className={[
-          "fixed top-0 left-0 z-50 h-screen border-r bg-sidebar border-sidebar-border",
-          "transition-all duration-300",
-          // Desktop collapse width
-          isOpen ? "lg:w-64" : "lg:w-20",
-          // Mobile slide in/out
-          isOpen ? "translate-x-0 w-64" : "-translate-x-full w-64",
-          // Always visible on desktop
-          "lg:translate-x-0",
-        ].join(" ")}
+        className={cn(
+          "fixed top-0 left-0 z-50 h-screen border-r bg-white transition-all duration-300 ease-in-out dark:bg-slate-950",
+          isOpen ? "w-64 translate-x-0" : isMobile ? "-translate-x-full" : "w-20 translate-x-0"
+        )}
       >
-        <div className="flex flex-col h-full p-4">
-          {/* Header / Logo */}
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-2">
-
-              {/* Hide text when collapsed on desktop */}
-              <span className={`font-bold text-sidebar-foreground ${!isOpen ? "lg:hidden" : ""}`}>
-                Tracking
-              </span>
+        <div className="flex h-full flex-col px-3 py-4">
+          <div className="mb-8 flex items-center justify-between px-2">
+            <div className="flex items-center gap-3 overflow-hidden">
+              
+              {isOpen && (
+               <div className="flex items-center justify-center gap-4">
+                 
+<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
+                <LayoutDashboard className="h-5 w-5" />
+              </div>
+                <span className="font-bold text-lg tracking-tight whitespace-nowrap animate-in fade-in duration-500">
+                  Admin Panel
+                </span>
+               </div>
+              )}
             </div>
 
-            {/* Desktop collapse button */}
-            <button
-              type="button"
-              onClick={() => setIsOpen((v) => !v)}
-              className="hidden lg:inline-flex items-center justify-center rounded-lg p-2 text-sidebar-foreground hover:bg-sidebar-accent"
-              aria-label={isOpen ? "Collapse sidebar" : "Expand sidebar"}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsOpen(!isOpen)}
+              className="h-8 w-8 rounded-lg text-slate-500"
             >
-              {isOpen ? <ChevronLeft className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
-            </button>
+              {isOpen ? <ChevronLeft className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
+            </Button>
           </div>
 
-          {/* Menu */}
-          <nav className="flex-1 space-y-1">
+          <nav className="flex-1 space-y-1.5">
             {menuItems.map((item) => {
-              const active = isActive(item.href)
+              const active = pathname === item.href
               const Icon = item.icon
-
               return (
-                <Link key={item.href} href={item.href} className="block">
+                <Link key={item.href} href={item.href} className="relative block">
                   <Button
-                    variant="ghost"
-                    className={[
-                      "w-full h-11",
-                      "justify-start gap-3",
-                      active
-                        ? "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary"
-                        : "text-sidebar-foreground hover:bg-sidebar-accent",
-                      // Center icons when collapsed on desktop
-                      !isOpen ? "lg:justify-center lg:px-0" : "",
-                    ].join(" ")}
+                    variant={active ? "secondary" : "ghost"}
+                    className={cn(
+                      "group w-full h-11 justify-start gap-4 rounded-xl transition-all",
+                      active ? "bg-primary/10 text-primary" : "text-slate-500",
+                      !isOpen && "justify-center px-0"
+                    )}
                   >
-                    <Icon className="w-5 h-5 shrink-0" />
-                    <span className={!isOpen ? "lg:hidden" : ""}>{item.label}</span>
+                    <Icon className={cn("h-5 w-5 shrink-0", active && "scale-110")} />
+                    {isOpen && <span className="font-medium animate-in fade-in duration-300">{item.label}</span>}
+                    {active && <div className="absolute left-[-12px] h-6 w-1 rounded-r-full bg-primary" />}
                   </Button>
                 </Link>
               )
             })}
           </nav>
 
-          {/* Logout */}
-          <Button
-            onClick={logout}
-            variant="ghost"
-            className={[
-              "w-full h-11 mt-2",
-              "justify-start gap-3",
-              "text-sidebar-foreground hover:bg-sidebar-accent",
-              !isOpen ? "lg:justify-center lg:px-0" : "",
-            ].join(" ")}
-          >
-            <LogOut className="w-5 h-5 shrink-0" />
-            <span className={!isOpen ? "lg:hidden" : ""}>Logout</span>
-          </Button>
+          <div className="mt-auto border-t pt-4">
+            <Button
+              onClick={logout}
+              variant="ghost"
+              className={cn(
+                "w-full h-11 justify-start gap-4 rounded-xl text-rose-500 hover:bg-rose-50",
+                !isOpen && "justify-center px-0"
+              )}
+            >
+              <LogOut className="h-5 w-5 shrink-0" />
+              {isOpen && <span className="font-medium">Sign Out</span>}
+            </Button>
+          </div>
         </div>
       </aside>
     </>

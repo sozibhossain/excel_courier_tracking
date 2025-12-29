@@ -1,78 +1,96 @@
 "use client"
 
-import type React from "react"
-import { useEffect } from "react"
-import Link from "next/link"
-import { useRouter } from "next/navigation"
-
 import { useAuth } from "@/lib/auth-context"
 import { AdminSidebar } from "@/components/admin/sidebar"
-import { Spinner } from "@/components/ui/spinner"
-import { Bell, UserCircle } from "lucide-react"
+import { SidebarProvider, useSidebar } from "@/lib/sidebar-context"
+import { Bell, User, ShieldCheck, Menu, LayoutDashboard } from "lucide-react"
 import { useNotifications } from "@/lib/notifications-context"
+import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
+import Link from "next/link"
 
 function AdminHeader() {
   const { unreadCount } = useNotifications()
+  const { user } = useAuth()
+  const { isOpen, setIsOpen, isMobile } = useSidebar()
 
   return (
-    <header className="fixed top-0 inset-x-0 z-50 h-16 border-b bg-background">
+    <header className={cn(
+      "fixed top-0 right-0 z-40 h-16 border-b bg-white/80 backdrop-blur-md transition-all duration-300",
+      isMobile ? "left-0" : isOpen ? "left-64" : "left-20"
+    )}>
       <div className="h-full px-4 lg:px-8 flex items-center justify-between">
-        <div className="font-semibold">Admin Panel</div>
+        <div className="flex items-center gap-4">
+          {/* Mobile Menu Trigger */}
+          {isMobile && !isOpen && (
+            <Button variant="ghost" size="icon" onClick={() => setIsOpen(true)}>
+              <Menu className="h-5 w-5" />
+            </Button>
+          )}
+          <div className="flex items-center gap-3">
+            {isOpen ? ( null) : <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
+              <LayoutDashboard className="h-5 w-5" />
+            </div>}
 
-        <div className="flex items-center gap-3">
-          <Link
-            href="/admin/notifications"
-            className="relative inline-flex h-9 w-9 items-center justify-center rounded-md border hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label={`Notifications (${unreadCount})`}
-          >
-            <Bell className="h-5 w-5" />
-            {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[11px] leading-[18px] text-center">
-                {unreadCount > 99 ? "99+" : unreadCount}
-              </span>
-            )}
+            <span className="text-sm font-medium text-slate-500">
+              {isOpen ? "Console" : "Admin Console"}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <Link href="/admin/notifications" className="relative">
+            <Button variant="ghost" size="icon" className="rounded-xl">
+              <Bell className="h-5 w-5 text-slate-600" />
+              {unreadCount > 0 && (
+                <span className="absolute top-2 right-2 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white ring-2 ring-white">
+                  {unreadCount}
+                </span>
+              )}
+            </Button>
           </Link>
-
-          <button
-            type="button"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border hover:bg-muted"
-            aria-label="Profile"
-          >
-            <UserCircle className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-3 pl-2 border-l">
+            <div className="hidden text-right sm:block">
+              <p className="text-sm font-bold leading-none">{user?.name || "Admin"}</p>
+              <p className="text-[10px] uppercase text-slate-400 font-bold">Administrator</p>
+            </div>
+            <div className="h-9 w-9 rounded-xl bg-slate-100 flex items-center justify-center">
+              <User className="h-5 w-5 text-slate-600" />
+            </div>
+          </div>
         </div>
       </div>
     </header>
   )
 }
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
-  const router = useRouter()
+  const { isOpen, isMobile } = useSidebar()
 
-  useEffect(() => {
-    if (!loading && user?.role !== "ADMIN") router.push("/login")
-  }, [user, loading, router])
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Spinner className="w-8 h-8" />
-      </div>
-    )
-  }
-
+  if (loading) return <div className="h-screen w-full flex items-center justify-center"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" /></div>
   if (user?.role !== "ADMIN") return null
 
   return (
-    <div className="min-h-screen">
-      <AdminHeader />
+    <div className="min-h-screen bg-slate-50/50">
       <AdminSidebar />
-
-      {/* Content: header height + sidebar width offset */}
-      <main className="pt-16 lg:pl-64">
-        <div className="p-4 lg:p-8">{children}</div>
+      <AdminHeader />
+      <main className={cn(
+        "transition-all duration-300 ease-in-out pt-16",
+        isMobile ? "pl-0" : isOpen ? "pl-64" : "pl-20"
+      )}>
+        <div className="mx-auto max-w-[1600px] p-4 lg:p-8">
+          {children}
+        </div>
       </main>
     </div>
+  )
+}
+
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <SidebarProvider>
+      <AdminLayoutContent>{children}</AdminLayoutContent>
+    </SidebarProvider>
   )
 }

@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as L from "leaflet";
 import type { Map as LeafletMap } from "leaflet";
+import { MapContainer, Marker, TileLayer, useMapEvents } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
+
 import {
   Dialog,
   DialogContent,
@@ -13,21 +16,18 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { MapContainer, Marker, TileLayer, useMapEvents } from "react-leaflet";
-import "leaflet/dist/leaflet.css";
 
-// Fix default marker icon
+// ✅ Fix default marker icon
 const DefaultIcon = L.icon({
   iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  iconRetinaUrl:
-    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
   shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
   iconSize: [25, 41],
   iconAnchor: [12, 41],
 });
 L.Marker.prototype.options.icon = DefaultIcon;
 
-type PickedLocation = {
+export type PickedLocation = {
   fullAddress: string;
   lat: number;
   lng: number;
@@ -36,23 +36,22 @@ type PickedLocation = {
   postalCode?: string;
 };
 
-type AddressPickerDialogProps = {
+export type AddressPickerDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
   description?: string;
-  initialLat?: number | undefined;
-  initialLng?: number | undefined;
+  initialLat?: number;
+  initialLng?: number;
   onConfirm: (picked: PickedLocation) => void;
+
+  /** must increment every time you open */
+  instanceId: number;
 };
 
 const DEFAULT_CENTER: [number, number] = [23.8103, 90.4125]; // Dhaka fallback
 
-function MapClickPicker({
-  onPick,
-}: {
-  onPick: (lat: number, lng: number) => void;
-}) {
+function MapClickPicker({ onPick }: { onPick: (lat: number, lng: number) => void }) {
   useMapEvents({
     click(e) {
       onPick(e.latlng.lat, e.latlng.lng);
@@ -68,9 +67,7 @@ async function nominatimSearch(q: string) {
   url.searchParams.set("addressdetails", "1");
   url.searchParams.set("limit", "5");
 
-  const res = await fetch(url.toString(), {
-    headers: { Accept: "application/json" },
-  });
+  const res = await fetch(url.toString(), { headers: { Accept: "application/json" } });
   if (!res.ok) throw new Error("OpenStreetMap search failed");
   return (await res.json()) as Array<any>;
 }
@@ -82,9 +79,7 @@ async function nominatimReverse(lat: number, lng: number) {
   url.searchParams.set("format", "json");
   url.searchParams.set("addressdetails", "1");
 
-  const res = await fetch(url.toString(), {
-    headers: { Accept: "application/json" },
-  });
+  const res = await fetch(url.toString(), { headers: { Accept: "application/json" } });
   if (!res.ok) throw new Error("OpenStreetMap reverse geocode failed");
   return (await res.json()) as any;
 }
@@ -97,22 +92,35 @@ export function AddressPickerDialog({
   initialLat,
   initialLng,
   onConfirm,
+  instanceId,
 }: AddressPickerDialogProps) {
   const initialCenter = useMemo<[number, number]>(() => {
-    if (typeof initialLat === "number" && typeof initialLng === "number")
-      return [initialLat, initialLng];
+    if (typeof initialLat === "number" && typeof initialLng === "number") return [initialLat, initialLng];
     return DEFAULT_CENTER;
   }, [initialLat, initialLng]);
 
   const mapRef = useRef<LeafletMap | null>(null);
 
-  // ✅ CRITICAL: cleanup on unmount (fixes StrictMode “already initialized”)
-  useEffect(() => {
-    return () => {
-      mapRef.current?.remove();
+  const cleanupMap = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    try {
+      const container = map.getContainer() as any;
+      map.off();
+      map.remove();
+      if (container && container._leaflet_id) delete container._leaflet_id; // ✅ critical
+    } catch {
+      // ignore
+    } finally {
       mapRef.current = null;
-    };
-  }, []);
+    }
+  };
+
+  useEffect(() => {
+    if (!open) cleanupMap();
+    return () => cleanupMap();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
@@ -125,11 +133,11 @@ export function AddressPickerDialog({
 
   useEffect(() => {
     if (!open) return;
+    setQuery("");
+    setResults([]);
     setPickedLat(initialCenter[0]);
     setPickedLng(initialCenter[1]);
     setPickedAddress("");
-    setResults([]);
-    setQuery("");
   }, [open, initialCenter]);
 
   const resolveAddress = async (lat: number, lng: number) => {
@@ -137,17 +145,15 @@ export function AddressPickerDialog({
     try {
       const data = await nominatimReverse(lat, lng);
       const addr = data?.address ?? {};
-      const fullAddress = data?.display_name ?? "";
-      setPickedAddress(fullAddress);
-
       const picked: PickedLocation = {
-        fullAddress,
+        fullAddress: data?.display_name ?? "",
         lat,
         lng,
         city: addr.city || addr.town || addr.village || addr.county || "",
         area: addr.suburb || addr.neighbourhood || addr.city_district || "",
         postalCode: addr.postcode || "",
       };
+      setPickedAddress(picked.fullAddress);
       return picked;
     } finally {
       setResolving(false);
@@ -178,11 +184,16 @@ export function AddressPickerDialog({
     }
   };
 
-  const canConfirm =
-    !!pickedAddress && Number.isFinite(pickedLat) && Number.isFinite(pickedLng);
+  const canConfirm = !!pickedAddress && Number.isFinite(pickedLat) && Number.isFinite(pickedLng);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) cleanupMap();
+        onOpenChange(v);
+      }}
+    >
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
@@ -214,9 +225,7 @@ export function AddressPickerDialog({
 
           {results.length > 0 && (
             <div className="rounded-md border p-2 max-h-40 overflow-auto">
-              <div className="text-xs text-muted-foreground mb-2">
-                Search results
-              </div>
+              <div className="text-xs text-muted-foreground mb-2">Search results</div>
               <div className="space-y-2">
                 {results.map((r) => (
                   <button
@@ -241,24 +250,27 @@ export function AddressPickerDialog({
             </div>
           )}
 
+          {/* ✅ Map */}
           <div className="h-[360px] w-full overflow-hidden rounded-md border">
             {open ? (
-              <MapContainer
-                key={`addr-map-${initialCenter[0]}-${initialCenter[1]}`}
-                center={[pickedLat, pickedLng]}
-                zoom={13}
-                style={{ height: "100%", width: "100%" }}
-                ref={(map) => {
-                  mapRef.current = map ?? null;
-                }}
-              >
-                <TileLayer
-                  attribution="&copy; OpenStreetMap contributors"
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                />
-                <MapClickPicker onPick={handlePick} />
-                <Marker position={[pickedLat, pickedLng]} />
-              </MapContainer>
+              <div key={instanceId} className="h-full w-full">
+                <MapContainer
+                  key={`addr-map-${instanceId}`} // ✅ MUST be instanceId
+                  center={[pickedLat, pickedLng]}
+                  zoom={13}
+                  style={{ height: "100%", width: "100%" }}
+                  whenCreated={(map) => {
+                    mapRef.current = map;
+                  }}
+                >
+                  <TileLayer
+                    attribution="&copy; OpenStreetMap contributors"
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                  <MapClickPicker onPick={handlePick} />
+                  <Marker position={[pickedLat, pickedLng]} />
+                </MapContainer>
+              </div>
             ) : null}
           </div>
 
@@ -267,16 +279,17 @@ export function AddressPickerDialog({
             <div className="text-xs text-muted-foreground mt-1">
               Lat: {pickedLat.toFixed(6)} | Lng: {pickedLng.toFixed(6)}
             </div>
-            <div className="text-sm mt-2">
-              {pickedAddress || "Click on the map to resolve an address."}
-            </div>
+            <div className="text-sm mt-2">{pickedAddress || "Click on the map to resolve an address."}</div>
           </div>
 
           <div className="flex justify-end gap-2">
             <Button
               type="button"
               variant="ghost"
-              onClick={() => onOpenChange(false)}
+              onClick={() => {
+                cleanupMap();
+                onOpenChange(false);
+              }}
             >
               Cancel
             </Button>
@@ -286,6 +299,7 @@ export function AddressPickerDialog({
               onClick={async () => {
                 const picked = await resolveAddress(pickedLat, pickedLng);
                 onConfirm(picked);
+                cleanupMap();
                 onOpenChange(false);
               }}
             >
