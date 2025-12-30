@@ -24,7 +24,7 @@ import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/lib/auth-context";
 import { createParcelBooking, type ParcelSummary } from "@/lib/api-client";
 import { useToast } from "../ui/use-toast";
-import { AddressPickerDialog, PickedLocation } from "./address-picker-dialog";
+import { AddressPickerDialog, type PickedLocation } from "./address-picker-dialog";
 
 const PARCEL_TYPES = ["Documents", "Electronics", "Apparel", "Fragile", "Other"] as const;
 const PARCEL_SIZES = ["Small", "Medium", "Large", "Oversized"] as const;
@@ -69,7 +69,11 @@ export function NewShipmentDialog({ onCreated }: NewShipmentDialogProps) {
   const { tokens } = useAuth();
   const { toast } = useToast();
 
-  const handleAddressChange = (target: AddressTarget, field: keyof typeof defaultAddress, value: any) => {
+  const handleAddressChange = (
+    target: AddressTarget,
+    field: keyof typeof defaultAddress,
+    value: any
+  ) => {
     setForm((prev) => ({
       ...prev,
       [target]: { ...prev[target], [field]: value },
@@ -82,7 +86,7 @@ export function NewShipmentDialog({ onCreated }: NewShipmentDialogProps) {
 
   const openAddressPicker = (target: AddressTarget) => {
     setAddressPickerTarget(target);
-    setAddressPickerInstanceId((id) => id + 1);
+    setAddressPickerInstanceId((id) => id + 1); // ✅ bump every open
     setAddressPickerOpen(true);
   };
 
@@ -103,11 +107,23 @@ export function NewShipmentDialog({ onCreated }: NewShipmentDialogProps) {
 
     try {
       setSubmitting(true);
+
+      // ✅ Ensure required address labels exist (backend requires `label`)
       const payload = {
         ...form,
+        pickupAddress: {
+          ...form.pickupAddress,
+          label: form.pickupAddress.label?.trim() || "Pickup Address",
+        },
+        deliveryAddress: {
+          ...form.deliveryAddress,
+          label: form.deliveryAddress.label?.trim() || "Delivery Address",
+        },
         codAmount: form.paymentType === "COD" ? Number(form.codAmount || 0) : 0,
         weight: form.weight ? Number(form.weight) : undefined,
-        scheduledPickupAt: form.scheduledPickupAt ? new Date(form.scheduledPickupAt).toISOString() : undefined,
+        scheduledPickupAt: form.scheduledPickupAt
+          ? new Date(form.scheduledPickupAt).toISOString()
+          : undefined,
       };
 
       const parcel = await createParcelBooking(tokens.accessToken, payload as any);
@@ -138,7 +154,6 @@ export function NewShipmentDialog({ onCreated }: NewShipmentDialogProps) {
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 pt-2 space-y-8">
-            {/* Pickup & Delivery Section */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Pickup Address */}
               <div className="space-y-4 p-4 border rounded-xl bg-slate-50/50">
@@ -146,11 +161,21 @@ export function NewShipmentDialog({ onCreated }: NewShipmentDialogProps) {
                   <MapPin className="h-4 w-4" />
                   <span className="text-sm uppercase tracking-wider">Pickup Details</span>
                 </div>
-                
+
                 <div className="space-y-3">
+                  {/* ✅ Label (required) */}
+                  <div className="space-y-1.5">
+                    <Label>Label</Label>
+                    <Input
+                      placeholder="Home / Office"
+                      value={form.pickupAddress.label}
+                      onChange={(e) => handleAddressChange("pickupAddress", "label", e.target.value)}
+                    />
+                  </div>
+
                   <div className="space-y-1.5">
                     <Label htmlFor="p-address">Full Address</Label>
-                    <div 
+                    <div
                       onClick={() => openAddressPicker("pickupAddress")}
                       className="flex items-center justify-between w-full px-3 py-2 border rounded-md bg-white cursor-pointer hover:border-primary transition-colors text-sm"
                     >
@@ -164,17 +189,17 @@ export function NewShipmentDialog({ onCreated }: NewShipmentDialogProps) {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <Label>City</Label>
-                      <Input 
-                        placeholder="Dhaka" 
-                        value={form.pickupAddress.city} 
+                      <Input
+                        placeholder="Dhaka"
+                        value={form.pickupAddress.city}
                         onChange={(e) => handleAddressChange("pickupAddress", "city", e.target.value)}
                       />
                     </div>
                     <div className="space-y-1.5">
                       <Label>Area</Label>
-                      <Input 
-                        placeholder="Dhanmondi" 
-                        value={form.pickupAddress.area} 
+                      <Input
+                        placeholder="Dhanmondi"
+                        value={form.pickupAddress.area}
                         onChange={(e) => handleAddressChange("pickupAddress", "area", e.target.value)}
                       />
                     </div>
@@ -188,11 +213,21 @@ export function NewShipmentDialog({ onCreated }: NewShipmentDialogProps) {
                   <MapPin className="h-4 w-4" />
                   <span className="text-sm uppercase tracking-wider">Delivery Details</span>
                 </div>
-                
+
                 <div className="space-y-3">
+                  {/* ✅ Label (required) */}
+                  <div className="space-y-1.5">
+                    <Label>Label</Label>
+                    <Input
+                      placeholder="Receiver Home / Office"
+                      value={form.deliveryAddress.label}
+                      onChange={(e) => handleAddressChange("deliveryAddress", "label", e.target.value)}
+                    />
+                  </div>
+
                   <div className="space-y-1.5">
                     <Label htmlFor="d-address">Full Address</Label>
-                    <div 
+                    <div
                       onClick={() => openAddressPicker("deliveryAddress")}
                       className="flex items-center justify-between w-full px-3 py-2 border rounded-md bg-white cursor-pointer hover:border-primary transition-colors text-sm"
                     >
@@ -206,17 +241,17 @@ export function NewShipmentDialog({ onCreated }: NewShipmentDialogProps) {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <Label>City</Label>
-                      <Input 
-                        placeholder="Chattogram" 
-                        value={form.deliveryAddress.city} 
+                      <Input
+                        placeholder="Chattogram"
+                        value={form.deliveryAddress.city}
                         onChange={(e) => handleAddressChange("deliveryAddress", "city", e.target.value)}
                       />
                     </div>
                     <div className="space-y-1.5">
                       <Label>Area</Label>
-                      <Input 
-                        placeholder="Agrabad" 
-                        value={form.deliveryAddress.area} 
+                      <Input
+                        placeholder="Agrabad"
+                        value={form.deliveryAddress.area}
                         onChange={(e) => handleAddressChange("deliveryAddress", "area", e.target.value)}
                       />
                     </div>
@@ -238,7 +273,11 @@ export function NewShipmentDialog({ onCreated }: NewShipmentDialogProps) {
                   <Select value={form.parcelType} onValueChange={(v) => handleFieldChange("parcelType", v)}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {PARCEL_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                      {PARCEL_TYPES.map((t) => (
+                        <SelectItem key={t} value={t}>
+                          {t}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -247,17 +286,21 @@ export function NewShipmentDialog({ onCreated }: NewShipmentDialogProps) {
                   <Select value={form.parcelSize} onValueChange={(v) => handleFieldChange("parcelSize", v)}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {PARCEL_SIZES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                      {PARCEL_SIZES.map((s) => (
+                        <SelectItem key={s} value={s}>
+                          {s}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1.5">
                   <Label>Weight (kg)</Label>
-                  <Input 
-                    type="number" 
-                    step="0.1" 
-                    value={form.weight} 
-                    onChange={(e) => handleFieldChange("weight", e.target.value)} 
+                  <Input
+                    type="number"
+                    step="0.1"
+                    value={form.weight}
+                    onChange={(e) => handleFieldChange("weight", e.target.value)}
                   />
                 </div>
               </div>
@@ -283,21 +326,21 @@ export function NewShipmentDialog({ onCreated }: NewShipmentDialogProps) {
                 </div>
                 <div className="space-y-1.5">
                   <Label>COD Amount (৳)</Label>
-                  <Input 
-                    type="number" 
-                    disabled={form.paymentType === "PREPAID"} 
-                    value={form.codAmount} 
-                    onChange={(e) => handleFieldChange("codAmount", e.target.value)} 
+                  <Input
+                    type="number"
+                    disabled={form.paymentType === "PREPAID"}
+                    value={form.codAmount}
+                    onChange={(e) => handleFieldChange("codAmount", e.target.value)}
                   />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="flex items-center gap-1.5">
                     <Calendar className="h-3 w-3" /> Pickup Date
                   </Label>
-                  <Input 
-                    type="datetime-local" 
-                    value={form.scheduledPickupAt} 
-                    onChange={(e) => handleFieldChange("scheduledPickupAt", e.target.value)} 
+                  <Input
+                    type="datetime-local"
+                    value={form.scheduledPickupAt}
+                    onChange={(e) => handleFieldChange("scheduledPickupAt", e.target.value)}
                   />
                 </div>
               </div>
@@ -308,9 +351,9 @@ export function NewShipmentDialog({ onCreated }: NewShipmentDialogProps) {
             <Button variant="outline" onClick={resetForm} disabled={submitting}>
               Clear Form
             </Button>
-            <Button 
-              type="submit" 
-              onClick={handleSubmit} 
+            <Button
+              type="submit"
+              onClick={handleSubmit}
               disabled={!requiredFieldsFilled || submitting}
               className="px-8"
             >
@@ -322,6 +365,7 @@ export function NewShipmentDialog({ onCreated }: NewShipmentDialogProps) {
 
       {addressPickerOpen && (
         <AddressPickerDialog
+          key={`addr-picker-${addressPickerInstanceId}`}
           open={addressPickerOpen}
           onOpenChange={setAddressPickerOpen}
           title={addressPickerTarget === "pickupAddress" ? "Pick Up From" : "Deliver To"}
@@ -334,6 +378,10 @@ export function NewShipmentDialog({ onCreated }: NewShipmentDialogProps) {
               [addressPickerTarget]: {
                 ...prev[addressPickerTarget],
                 ...picked,
+                // ✅ ensure backend-required label exists even if user didn't type it yet
+                label:
+                  prev[addressPickerTarget].label?.trim() ||
+                  (addressPickerTarget === "pickupAddress" ? "Pickup Address" : "Delivery Address"),
               },
             }));
           }}

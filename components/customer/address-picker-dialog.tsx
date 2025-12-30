@@ -2,8 +2,6 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as L from "leaflet";
-import type { Map as LeafletMap } from "leaflet";
-import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 
 import {
@@ -51,27 +49,6 @@ export type AddressPickerDialogProps = {
 
 const DEFAULT_CENTER: [number, number] = [23.8103, 90.4125]; // Dhaka fallback
 
-function MapClickPicker({ onPick }: { onPick: (lat: number, lng: number) => void }) {
-  useMapEvents({
-    click(e) {
-      onPick(e.latlng.lat, e.latlng.lng);
-    },
-  });
-  return null;
-}
-
-/**
- * Optional: ensures the map actually recenters when pickedLat/Lng changes.
- * (React-Leaflet often doesn't move the view after initial mount unless you call setView)
- */
-function RecenterMap({ lat, lng }: { lat: number; lng: number }) {
-  const map = useMap();
-  useEffect(() => {
-    map.setView([lat, lng], map.getZoom(), { animate: true });
-  }, [lat, lng, map]);
-  return null;
-}
-
 async function nominatimSearch(q: string) {
   const url = new URL("https://nominatim.openstreetmap.org/search");
   url.searchParams.set("q", q);
@@ -111,28 +88,12 @@ export function AddressPickerDialog({
     return DEFAULT_CENTER;
   }, [initialLat, initialLng]);
 
-  const mapRef = useRef<LeafletMap | null>(null);
+  // ✅ Map node state (fixes portal timing issues)
+  const [mapNode, setMapNode] = useState<HTMLDivElement | null>(null);
 
-  const cleanupMap = () => {
-    const map = mapRef.current;
-    if (!map) return;
-    try {
-      const container = map.getContainer() as any;
-      map.off();
-      map.remove();
-      if (container && container._leaflet_id) delete container._leaflet_id; // ✅ critical
-    } catch {
-      // ignore
-    } finally {
-      mapRef.current = null;
-    }
-  };
-
-  useEffect(() => {
-    if (!open) cleanupMap();
-    return () => cleanupMap();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  // Leaflet refs
+  const mapRef = useRef<L.Map | null>(null);
+  const markerRef = useRef<L.Marker | null>(null);
 
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
@@ -143,6 +104,21 @@ export function AddressPickerDialog({
   const [pickedAddress, setPickedAddress] = useState<string>("");
   const [resolving, setResolving] = useState(false);
 
+  const destroyMap = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    try {
+      map.off();
+      map.remove();
+    } catch {
+      // ignore
+    } finally {
+      mapRef.current = null;
+      markerRef.current = null;
+    }
+  };
+
+  // Reset state on open
   useEffect(() => {
     if (!open) return;
     setQuery("");
@@ -196,16 +172,63 @@ export function AddressPickerDialog({
     }
   };
 
+  // ✅ Initialize Leaflet ONLY when mapNode exists (portal-safe)
+  useEffect(() => {
+    if (!open || !mapNode) return;
+
+    // Always destroy before init (dev strict-mode safe)
+    destroyMap();
+
+    // wipe stale leaflet id if any
+    const anyNode = mapNode as any;
+    if (anyNode._leaflet_id) delete anyNode._leaflet_id;
+
+    const map = L.map(mapNode).setView([pickedLat, pickedLng], 13);
+    mapRef.current = map;
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "&copy; OpenStreetMap contributors",
+    }).addTo(map);
+
+    const marker = L.marker([pickedLat, pickedLng], { icon: DefaultIcon }).addTo(map);
+    markerRef.current = marker;
+
+    map.on("click", async (e: L.LeafletMouseEvent) => {
+      const lat = e.latlng.lat;
+      const lng = e.latlng.lng;
+      marker.setLatLng([lat, lng]);
+      await handlePick(lat, lng);
+    });
+
+    // ✅ Important: dialog animations/portal can cause 0-size at init
+    // invalidate after paint + small delay
+    requestAnimationFrame(() => map.invalidateSize());
+    const t = window.setTimeout(() => map.invalidateSize(), 200);
+
+    return () => {
+      window.clearTimeout(t);
+      destroyMap();
+      if (anyNode._leaflet_id) delete anyNode._leaflet_id;
+    };
+    // instanceId ensures new map per open
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, instanceId, mapNode]);
+
+  // Keep marker/view synced when picked coords change (search / result click)
+  useEffect(() => {
+    if (!open) return;
+    const map = mapRef.current;
+    const marker = markerRef.current;
+    if (!map || !marker) return;
+
+    marker.setLatLng([pickedLat, pickedLng]);
+    map.setView([pickedLat, pickedLng], map.getZoom(), { animate: true });
+  }, [pickedLat, pickedLng, open]);
+
   const canConfirm = !!pickedAddress && Number.isFinite(pickedLat) && Number.isFinite(pickedLng);
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        if (!v) cleanupMap();
-        onOpenChange(v);
-      }}
-    >
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
@@ -264,28 +287,11 @@ export function AddressPickerDialog({
 
           {/* ✅ Map */}
           <div className="h-[360px] w-full overflow-hidden rounded-md border">
-            {open ? (
-              <div key={instanceId} className="h-full w-full">
-                <MapContainer
-                  key={`addr-map-${instanceId}`} // ✅ MUST be instanceId
-                  center={[pickedLat, pickedLng]}
-                  zoom={13}
-                  style={{ height: "100%", width: "100%" }}
-                  // ✅ Fix TS error: use ref instead of whenCreated (works across react-leaflet versions)
-                  ref={(map) => {
-                    if (map) mapRef.current = map;
-                  }}
-                >
-                  <TileLayer
-                    attribution="&copy; OpenStreetMap contributors"
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  />
-                  <RecenterMap lat={pickedLat} lng={pickedLng} />
-                  <MapClickPicker onPick={handlePick} />
-                  <Marker position={[pickedLat, pickedLng]} />
-                </MapContainer>
-              </div>
-            ) : null}
+            <div
+              key={`leaflet-map-${instanceId}`}   // ✅ new DOM per open
+              ref={setMapNode}                   // ✅ callback ref (portal-safe)
+              className="h-full w-full"
+            />
           </div>
 
           <div className="rounded-md border p-3">
@@ -297,14 +303,7 @@ export function AddressPickerDialog({
           </div>
 
           <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => {
-                cleanupMap();
-                onOpenChange(false);
-              }}
-            >
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             <Button
@@ -313,7 +312,6 @@ export function AddressPickerDialog({
               onClick={async () => {
                 const picked = await resolveAddress(pickedLat, pickedLng);
                 onConfirm(picked);
-                cleanupMap();
                 onOpenChange(false);
               }}
             >
