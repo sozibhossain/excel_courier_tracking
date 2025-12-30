@@ -92,10 +92,6 @@ export default function AdminParcels() {
             Live view of every shipment in the network.
           </p>
         </div>
-        <Button className="bg-primary text-primary-foreground hover:bg-primary/90">
-          <Plus className="mr-2 h-4 w-4" />
-          New Parcel
-        </Button>
       </div>
 
       {/* Search and Filter */}

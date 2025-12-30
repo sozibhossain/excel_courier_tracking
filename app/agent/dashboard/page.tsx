@@ -193,18 +193,20 @@ export default function AgentDashboard() {
             icon={<Package size={16} />}
             className="bg-blue-50 dark:bg-blue-900/20 text-blue-600"
           />
-          <StatCard
-            title="On Way"
-            count={parcels.filter(p => p.status === "IN_TRANSIT").length}
-            icon={<Truck size={16} />}
-            className="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600"
-          />
-          <StatCard
-            title="Issues"
-            count={parcels.filter(p => REVIEW_STATUSES.includes(p.status)).length}
-            icon={<AlertCircle size={16} />}
-            className="bg-amber-50 dark:bg-amber-900/20 text-amber-600"
-          />
+         <StatCard
+  title="Picked Up"
+  count={parcels.filter((p) => p.status === "PICKED_UP").length}
+  icon={<Truck size={16} />}
+  className="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600"
+/>
+
+<StatCard
+  title="Completed"
+  count={parcels.filter((p) => COMPLETED_STATUSES.includes(p.status)).length}
+  icon={<CheckCircle2 size={16} />}
+  className="bg-amber-50 dark:bg-amber-900/20 text-amber-600"
+/>
+
         </div>
 
         {/* Search Bar - Full width on mobile */}

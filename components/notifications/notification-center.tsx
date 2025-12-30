@@ -153,7 +153,7 @@ export function NotificationCenter({
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 py-6 px-4">
+    <div className=" space-y-6 py-6 px-4">
       {/* Navigation & Header Section */}
       <div className="space-y-4">
         <Button 

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Plus } from "lucide-react";
+import { Plus, MapPin, Package, CreditCard, Map as MapIcon, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,13 +20,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
+import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/lib/auth-context";
 import { createParcelBooking, type ParcelSummary } from "@/lib/api-client";
 import { useToast } from "../ui/use-toast";
 import { AddressPickerDialog, PickedLocation } from "./address-picker-dialog";
-
-// import { AddressPickerDialog, type PickedLocation } from "";
 
 const PARCEL_TYPES = ["Documents", "Electronics", "Apparel", "Fragile", "Other"] as const;
 const PARCEL_SIZES = ["Small", "Medium", "Large", "Oversized"] as const;
@@ -71,17 +69,10 @@ export function NewShipmentDialog({ onCreated }: NewShipmentDialogProps) {
   const { tokens } = useAuth();
   const { toast } = useToast();
 
-  const handleAddressChange = (
-    target: AddressTarget,
-    field: keyof typeof defaultAddress,
-    value: any
-  ) => {
+  const handleAddressChange = (target: AddressTarget, field: keyof typeof defaultAddress, value: any) => {
     setForm((prev) => ({
       ...prev,
-      [target]: {
-        ...prev[target],
-        [field]: value,
-      },
+      [target]: { ...prev[target], [field]: value },
     }));
   };
 
@@ -91,7 +82,7 @@ export function NewShipmentDialog({ onCreated }: NewShipmentDialogProps) {
 
   const openAddressPicker = (target: AddressTarget) => {
     setAddressPickerTarget(target);
-    setAddressPickerInstanceId((id) => id + 1); // ✅ increment before open
+    setAddressPickerInstanceId((id) => id + 1);
     setAddressPickerOpen(true);
   };
 
@@ -99,337 +90,241 @@ export function NewShipmentDialog({ onCreated }: NewShipmentDialogProps) {
 
   const requiredFieldsFilled =
     !!form.pickupAddress.fullAddress &&
-    !!form.pickupAddress.city &&
-    !!form.pickupAddress.area &&
-    !!form.pickupAddress.postalCode &&
     !!form.deliveryAddress.fullAddress &&
-    !!form.deliveryAddress.city &&
-    !!form.deliveryAddress.area &&
-    !!form.deliveryAddress.postalCode;
+    !!form.pickupAddress.city &&
+    !!form.deliveryAddress.city;
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-
     if (!tokens?.accessToken) {
-      toast({
-        title: "Authentication required",
-        description: "Please log in again.",
-        variant: "destructive",
-      });
+      toast({ title: "Authentication required", variant: "destructive" });
       return;
     }
 
     try {
       setSubmitting(true);
-
       const payload = {
-        pickupAddress: {
-          ...form.pickupAddress,
-          lat: form.pickupAddress.lat ?? undefined,
-          lng: form.pickupAddress.lng ?? undefined,
-        },
-        deliveryAddress: {
-          ...form.deliveryAddress,
-          lat: form.deliveryAddress.lat ?? undefined,
-          lng: form.deliveryAddress.lng ?? undefined,
-        },
-        parcelType: form.parcelType,
-        parcelSize: form.parcelSize,
-        paymentType: form.paymentType,
+        ...form,
         codAmount: form.paymentType === "COD" ? Number(form.codAmount || 0) : 0,
         weight: form.weight ? Number(form.weight) : undefined,
-        scheduledPickupAt: form.scheduledPickupAt
-          ? new Date(form.scheduledPickupAt).toISOString()
-          : undefined,
+        scheduledPickupAt: form.scheduledPickupAt ? new Date(form.scheduledPickupAt).toISOString() : undefined,
       };
 
       const parcel = await createParcelBooking(tokens.accessToken, payload as any);
-
-      toast({
-        title: "Shipment created",
-        description: `Tracking code ${parcel.trackingCode} is ready.`,
-      });
-
+      toast({ title: "Shipment created", description: `Tracking: ${parcel.trackingCode}` });
       onCreated?.(parcel);
       resetForm();
       setOpen(false);
-    } catch (error) {
-      toast({
-        title: "Failed to create shipment",
-        description: error instanceof Error ? error.message : "Something went wrong",
-        variant: "destructive",
-      });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     } finally {
       setSubmitting(false);
     }
   };
 
-  const codDisabled = form.paymentType === "PREPAID";
-
   return (
     <>
-      <Dialog open={open} onOpenChange={(value) => !submitting && setOpen(value)}>
+      <Dialog open={open} onOpenChange={(v) => !submitting && setOpen(v)}>
         <DialogTrigger asChild>
-          <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90">
-            <Plus className="mr-2 h-4 w-4" />
-            New Shipment
+          <Button className="shadow-sm">
+            <Plus className="mr-2 h-4 w-4" /> New Shipment
           </Button>
         </DialogTrigger>
 
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Create shipment</DialogTitle>
-            <DialogDescription>Enter pickup and delivery details to schedule a courier.</DialogDescription>
+        <DialogContent className="sm:max-w-[700px] p-0 overflow-hidden flex flex-col max-h-[95vh]">
+          <DialogHeader className="p-6 pb-2">
+            <DialogTitle className="text-2xl">Create Shipment</DialogTitle>
+            <DialogDescription>Fill in the details to schedule your courier pickup.</DialogDescription>
           </DialogHeader>
 
-          <form className="space-y-6" onSubmit={handleSubmit}>
-            {/* Pickup */}
-            <section className="space-y-4">
-              <h3 className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
-                Pickup
-              </h3>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="pickup-label">Label</Label>
-                  <Input
-                    id="pickup-label"
-                    placeholder="Warehouse A"
-                    value={form.pickupAddress.label}
-                    onChange={(e) => handleAddressChange("pickupAddress", "label", e.target.value)}
-                  />
+          <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 pt-2 space-y-8">
+            {/* Pickup & Delivery Section */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Pickup Address */}
+              <div className="space-y-4 p-4 border rounded-xl bg-slate-50/50">
+                <div className="flex items-center gap-2 text-primary font-semibold">
+                  <MapPin className="h-4 w-4" />
+                  <span className="text-sm uppercase tracking-wider">Pickup Details</span>
                 </div>
+                
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="p-address">Full Address</Label>
+                    <div 
+                      onClick={() => openAddressPicker("pickupAddress")}
+                      className="flex items-center justify-between w-full px-3 py-2 border rounded-md bg-white cursor-pointer hover:border-primary transition-colors text-sm"
+                    >
+                      <span className={form.pickupAddress.fullAddress ? "text-foreground" : "text-muted-foreground"}>
+                        {form.pickupAddress.fullAddress || "Select location on map..."}
+                      </span>
+                      <MapIcon className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="pickup-city">City</Label>
-                  <Input
-                    id="pickup-city"
-                    placeholder="Dhaka"
-                    value={form.pickupAddress.city}
-                    onChange={(e) => handleAddressChange("pickupAddress", "city", e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="pickup-address">Full address</Label>
-                  <Input
-                    id="pickup-address"
-                    placeholder="House 12, Road 1, Dhanmondi"
-                    value={form.pickupAddress.fullAddress}
-                    readOnly
-                    onClick={() => openAddressPicker("pickupAddress")}
-                    required
-                  />
-                  <div className="text-xs text-muted-foreground">
-                    {typeof form.pickupAddress.lat === "number" &&
-                    typeof form.pickupAddress.lng === "number"
-                      ? `Lat ${form.pickupAddress.lat.toFixed(6)}, Lng ${form.pickupAddress.lng.toFixed(6)}`
-                      : "Click to pick on map (sets latitude/longitude)."}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>City</Label>
+                      <Input 
+                        placeholder="Dhaka" 
+                        value={form.pickupAddress.city} 
+                        onChange={(e) => handleAddressChange("pickupAddress", "city", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Area</Label>
+                      <Input 
+                        placeholder="Dhanmondi" 
+                        value={form.pickupAddress.area} 
+                        onChange={(e) => handleAddressChange("pickupAddress", "area", e.target.value)}
+                      />
+                    </div>
                   </div>
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="pickup-area">Area</Label>
-                  <Input
-                    id="pickup-area"
-                    placeholder="Dhanmondi"
-                    value={form.pickupAddress.area}
-                    onChange={(e) => handleAddressChange("pickupAddress", "area", e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="pickup-postal">Postal code</Label>
-                  <Input
-                    id="pickup-postal"
-                    placeholder="1205"
-                    value={form.pickupAddress.postalCode}
-                    onChange={(e) => handleAddressChange("pickupAddress", "postalCode", e.target.value)}
-                    required
-                  />
-                </div>
               </div>
-            </section>
 
-            {/* Delivery */}
-            <section className="space-y-4">
-              <h3 className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
-                Delivery
-              </h3>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="delivery-label">Label</Label>
-                  <Input
-                    id="delivery-label"
-                    placeholder="Customer"
-                    value={form.deliveryAddress.label}
-                    onChange={(e) => handleAddressChange("deliveryAddress", "label", e.target.value)}
-                  />
+              {/* Delivery Address */}
+              <div className="space-y-4 p-4 border rounded-xl bg-slate-50/50">
+                <div className="flex items-center gap-2 text-orange-600 font-semibold">
+                  <MapPin className="h-4 w-4" />
+                  <span className="text-sm uppercase tracking-wider">Delivery Details</span>
                 </div>
+                
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="d-address">Full Address</Label>
+                    <div 
+                      onClick={() => openAddressPicker("deliveryAddress")}
+                      className="flex items-center justify-between w-full px-3 py-2 border rounded-md bg-white cursor-pointer hover:border-primary transition-colors text-sm"
+                    >
+                      <span className={form.deliveryAddress.fullAddress ? "text-foreground" : "text-muted-foreground"}>
+                        {form.deliveryAddress.fullAddress || "Select destination..."}
+                      </span>
+                      <MapIcon className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="delivery-city">City</Label>
-                  <Input
-                    id="delivery-city"
-                    placeholder="Chattogram"
-                    value={form.deliveryAddress.city}
-                    onChange={(e) => handleAddressChange("deliveryAddress", "city", e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="delivery-address">Full address</Label>
-                  <Input
-                    id="delivery-address"
-                    placeholder="Apartment 3B, Agrabad"
-                    value={form.deliveryAddress.fullAddress}
-                    readOnly
-                    onClick={() => openAddressPicker("deliveryAddress")}
-                    required
-                  />
-                  <div className="text-xs text-muted-foreground">
-                    {typeof form.deliveryAddress.lat === "number" &&
-                    typeof form.deliveryAddress.lng === "number"
-                      ? `Lat ${form.deliveryAddress.lat.toFixed(6)}, Lng ${form.deliveryAddress.lng.toFixed(6)}`
-                      : "Click to pick on map (sets latitude/longitude)."}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>City</Label>
+                      <Input 
+                        placeholder="Chattogram" 
+                        value={form.deliveryAddress.city} 
+                        onChange={(e) => handleAddressChange("deliveryAddress", "city", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Area</Label>
+                      <Input 
+                        placeholder="Agrabad" 
+                        value={form.deliveryAddress.area} 
+                        onChange={(e) => handleAddressChange("deliveryAddress", "area", e.target.value)}
+                      />
+                    </div>
                   </div>
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="delivery-area">Area</Label>
-                  <Input
-                    id="delivery-area"
-                    placeholder="Agrabad"
-                    value={form.deliveryAddress.area}
-                    onChange={(e) => handleAddressChange("deliveryAddress", "area", e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="delivery-postal">Postal code</Label>
-                  <Input
-                    id="delivery-postal"
-                    placeholder="4000"
-                    value={form.deliveryAddress.postalCode}
-                    onChange={(e) => handleAddressChange("deliveryAddress", "postalCode", e.target.value)}
-                    required
-                  />
-                </div>
               </div>
-            </section>
+            </div>
 
-            {/* Parcel details */}
-            <section className="space-y-4">
-              <h3 className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
-                Parcel details
-              </h3>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Parcel type</Label>
+            {/* Parcel Details */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 font-semibold px-1">
+                <Package className="h-4 w-4 text-blue-600" />
+                <span className="text-sm uppercase tracking-wider">Parcel Information</span>
+              </div>
+              <Separator />
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Type</Label>
                   <Select value={form.parcelType} onValueChange={(v) => handleFieldChange("parcelType", v)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select" />
-                    </SelectTrigger>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {PARCEL_TYPES.map((type) => (
-                        <SelectItem key={type} value={type}>
-                          {type}
-                        </SelectItem>
-                      ))}
+                      {PARCEL_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
-
-                <div className="space-y-2">
-                  <Label>Parcel size</Label>
+                <div className="space-y-1.5">
+                  <Label>Size Class</Label>
                   <Select value={form.parcelSize} onValueChange={(v) => handleFieldChange("parcelSize", v)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select" />
-                    </SelectTrigger>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {PARCEL_SIZES.map((size) => (
-                        <SelectItem key={size} value={size}>
-                          {size}
-                        </SelectItem>
-                      ))}
+                      {PARCEL_SIZES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="parcel-weight">Weight (kg)</Label>
-                  <Input
-                    id="parcel-weight"
-                    type="number"
-                    min="0"
-                    step="0.1"
-                    value={form.weight}
-                    onChange={(e) => handleFieldChange("weight", e.target.value)}
+                <div className="space-y-1.5">
+                  <Label>Weight (kg)</Label>
+                  <Input 
+                    type="number" 
+                    step="0.1" 
+                    value={form.weight} 
+                    onChange={(e) => handleFieldChange("weight", e.target.value)} 
                   />
                 </div>
+              </div>
+            </div>
 
-                <div className="space-y-2">
-                  <Label>Payment type</Label>
+            {/* Payment & Schedule */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 font-semibold px-1">
+                <CreditCard className="h-4 w-4 text-green-600" />
+                <span className="text-sm uppercase tracking-wider">Payment & Scheduling</span>
+              </div>
+              <Separator />
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Payment Method</Label>
                   <Select value={form.paymentType} onValueChange={(v) => handleFieldChange("paymentType", v)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="COD">Cash on Delivery</SelectItem>
                       <SelectItem value="PREPAID">Prepaid</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="cod-amount">COD amount</Label>
-                  <Input
-                    id="cod-amount"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    disabled={codDisabled}
-                    value={form.codAmount}
-                    onChange={(e) => handleFieldChange("codAmount", e.target.value)}
+                <div className="space-y-1.5">
+                  <Label>COD Amount (৳)</Label>
+                  <Input 
+                    type="number" 
+                    disabled={form.paymentType === "PREPAID"} 
+                    value={form.codAmount} 
+                    onChange={(e) => handleFieldChange("codAmount", e.target.value)} 
                   />
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="pickup-time">Pickup schedule</Label>
-                  <Input
-                    id="pickup-time"
-                    type="datetime-local"
-                    value={form.scheduledPickupAt}
-                    onChange={(e) => handleFieldChange("scheduledPickupAt", e.target.value)}
+                <div className="space-y-1.5">
+                  <Label className="flex items-center gap-1.5">
+                    <Calendar className="h-3 w-3" /> Pickup Date
+                  </Label>
+                  <Input 
+                    type="datetime-local" 
+                    value={form.scheduledPickupAt} 
+                    onChange={(e) => handleFieldChange("scheduledPickupAt", e.target.value)} 
                   />
                 </div>
               </div>
-            </section>
-
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="ghost" onClick={resetForm} disabled={submitting}>
-                Reset
-              </Button>
-              <Button type="submit" disabled={!requiredFieldsFilled || submitting}>
-                {submitting ? "Creating..." : "Create shipment"}
-              </Button>
             </div>
           </form>
+
+          <div className="p-6 bg-slate-50 border-t flex justify-end gap-3">
+            <Button variant="outline" onClick={resetForm} disabled={submitting}>
+              Clear Form
+            </Button>
+            <Button 
+              type="submit" 
+              onClick={handleSubmit} 
+              disabled={!requiredFieldsFilled || submitting}
+              className="px-8"
+            >
+              {submitting ? "Processing..." : "Confirm Booking"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
-      {/* ✅ IMPORTANT: unmount picker when closed */}
       {addressPickerOpen && (
         <AddressPickerDialog
           open={addressPickerOpen}
           onOpenChange={setAddressPickerOpen}
-          title={addressPickerTarget === "pickupAddress" ? "Select pickup location" : "Select delivery location"}
+          title={addressPickerTarget === "pickupAddress" ? "Pick Up From" : "Deliver To"}
           initialLat={form[addressPickerTarget].lat}
           initialLng={form[addressPickerTarget].lng}
           instanceId={addressPickerInstanceId}
@@ -438,12 +333,7 @@ export function NewShipmentDialog({ onCreated }: NewShipmentDialogProps) {
               ...prev,
               [addressPickerTarget]: {
                 ...prev[addressPickerTarget],
-                fullAddress: picked.fullAddress,
-                lat: picked.lat,
-                lng: picked.lng,
-                city: picked.city || prev[addressPickerTarget].city,
-                area: picked.area || prev[addressPickerTarget].area,
-                postalCode: picked.postalCode || prev[addressPickerTarget].postalCode,
+                ...picked,
               },
             }));
           }}

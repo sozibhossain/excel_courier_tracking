@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as L from "leaflet";
 import type { Map as LeafletMap } from "leaflet";
-import { MapContainer, Marker, TileLayer, useMapEvents } from "react-leaflet";
+import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 
 import {
@@ -57,6 +57,18 @@ function MapClickPicker({ onPick }: { onPick: (lat: number, lng: number) => void
       onPick(e.latlng.lat, e.latlng.lng);
     },
   });
+  return null;
+}
+
+/**
+ * Optional: ensures the map actually recenters when pickedLat/Lng changes.
+ * (React-Leaflet often doesn't move the view after initial mount unless you call setView)
+ */
+function RecenterMap({ lat, lng }: { lat: number; lng: number }) {
+  const map = useMap();
+  useEffect(() => {
+    map.setView([lat, lng], map.getZoom(), { animate: true });
+  }, [lat, lng, map]);
   return null;
 }
 
@@ -259,14 +271,16 @@ export function AddressPickerDialog({
                   center={[pickedLat, pickedLng]}
                   zoom={13}
                   style={{ height: "100%", width: "100%" }}
-                  whenCreated={(map) => {
-                    mapRef.current = map;
+                  // ✅ Fix TS error: use ref instead of whenCreated (works across react-leaflet versions)
+                  ref={(map) => {
+                    if (map) mapRef.current = map;
                   }}
                 >
                   <TileLayer
                     attribution="&copy; OpenStreetMap contributors"
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                   />
+                  <RecenterMap lat={pickedLat} lng={pickedLng} />
                   <MapClickPicker onPick={handlePick} />
                   <Marker position={[pickedLat, pickedLng]} />
                 </MapContainer>
